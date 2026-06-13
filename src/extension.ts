@@ -1,9 +1,32 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { BevyParser } from './bevyParser';
 import { BevyGlobalRegistryProvider, BevySemanticExplorerProvider } from './bevyTreeView';
 
+function checkIsBevyProject(workspaceFolders: readonly vscode.WorkspaceFolder[]): boolean {
+    for (const folder of workspaceFolders) {
+        const cargoPath = path.join(folder.uri.fsPath, 'Cargo.toml');
+        if (fs.existsSync(cargoPath)) {
+            try {
+                const content = fs.readFileSync(cargoPath, 'utf8');
+                if (content.includes('bevy') || content.includes('bevy_')) {
+                    return true;
+                }
+            } catch (err) {
+                console.error('Failed to read Cargo.toml:', err);
+            }
+        }
+    }
+    return false;
+}
+
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Bevy Lens extension is now active!');
+
+    // 创建诊断集合，用于标记 System 并发读写冲突的黄色波浪线警告
+    const conflictDiagnostics = vscode.languages.createDiagnosticCollection('bevy-lens');
+    context.subscriptions.push(conflictDiagnostics);
 
     // 1. 初始化 TreeDataProviders (传入 context 以获取插件本地打包的资源路径)
     const globalRegistryProvider = new BevyGlobalRegistryProvider(context);
@@ -29,12 +52,121 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
 
+        // 判断是否为 Bevy 项目，如果不是，清空数据并静默返回
+        if (!checkIsBevyProject(workspaceFolders)) {
+            globalRegistryProvider.updateData([]);
+            const rootPath = workspaceFolders[0].uri.fsPath;
+            semanticExplorerProvider.updateData([], rootPath);
+            conflictDiagnostics.clear();
+            return;
+        }
+
         vscode.window.withProgress({
             location: vscode.ProgressLocation.Window,
             title: "Bevy Lens: Analyzing ECS elements..."
         }, async () => {
             const elements = await BevyParser.parseWorkspace(workspaceFolders);
             
+            // 清除旧的冲突诊断
+            conflictDiagnostics.clear();
+
+            // 读取配置，如果用户启用了并发诊断才执行检测逻辑
+            const config = vscode.workspace.getConfiguration('bevyLens');
+            const enableConflictDiagnostics = config.get<boolean>('enableConflictDiagnostics', false);
+
+            if (enableConflictDiagnostics) {
+                // 检测系统并发读写冲突（一帧延迟问题）
+                const systems = elements.filter(e => e.type === 'System' && e.systemMetadata);
+                const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
+
+                for (let i = 0; i < systems.length; i++) {
+                    const sysA = systems[i];
+                    const metaA = sysA.systemMetadata!;
+                    if (!metaA.schedulePhase) continue;
+
+                    for (let j = i + 1; j < systems.length; j++) {
+                        const sysB = systems[j];
+                        const metaB = sysB.systemMetadata!;
+                        if (!metaB.schedulePhase || metaA.schedulePhase !== metaB.schedulePhase) continue;
+
+                        let conflictItem = '';
+                        let isConflict = false;
+
+                        // 1. 资源冲突
+                        for (const res of metaA.mutableResources) {
+                            if (metaB.mutableResources.includes(res) || metaB.readableResources.includes(res)) {
+                                conflictItem = `resource '${res}'`;
+                                isConflict = true;
+                                break;
+                            }
+                        }
+                        if (!isConflict) {
+                            for (const res of metaB.mutableResources) {
+                                if (metaA.readableResources.includes(res)) {
+                                    conflictItem = `resource '${res}'`;
+                                    isConflict = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 2. 组件冲突
+                        if (!isConflict) {
+                            for (const comp of metaA.mutableComponents) {
+                                if (metaB.mutableComponents.includes(comp) || metaB.readableComponents.includes(comp)) {
+                                    conflictItem = `component '${comp}'`;
+                                    isConflict = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!isConflict) {
+                            for (const comp of metaB.mutableComponents) {
+                                if (metaA.readableComponents.includes(comp)) {
+                                    conflictItem = `component '${comp}'`;
+                                    isConflict = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (isConflict) {
+                            // 检测是否显式声明了先后执行顺序
+                            const isOrdered = 
+                                metaA.runsAfter.includes(sysB.name) || 
+                                metaA.runsBefore.includes(sysB.name) ||
+                                metaB.runsAfter.includes(sysA.name) || 
+                                metaB.runsBefore.includes(sysA.name) ||
+                                metaA.runsAfter.some(set => metaB.belongsToSets.includes(set)) ||
+                                metaA.runsBefore.some(set => metaB.belongsToSets.includes(set)) ||
+                                metaB.runsAfter.some(set => metaA.belongsToSets.includes(set)) ||
+                                metaB.runsBefore.some(set => metaA.belongsToSets.includes(set));
+
+                            if (!isOrdered) {
+                                const message = `Potential System Conflict: '${sysA.name}' and '${sysB.name}' both access ${conflictItem} (at least one is mutable) in the '${metaA.schedulePhase}' schedule, but have no defined execution order. This can cause one-frame latency or race conditions.`;
+                                
+                                const diagRangeA = new vscode.Range(new vscode.Position(sysA.line - 1, 0), new vscode.Position(sysA.line - 1, 80));
+                                const diagA = new vscode.Diagnostic(diagRangeA, message, vscode.DiagnosticSeverity.Warning);
+                                diagA.source = 'Bevy Lens';
+                                if (!diagnosticsMap.has(sysA.filePath)) diagnosticsMap.set(sysA.filePath, []);
+                                diagnosticsMap.get(sysA.filePath)!.push(diagA);
+
+                                const diagRangeB = new vscode.Range(new vscode.Position(sysB.line - 1, 0), new vscode.Position(sysB.line - 1, 80));
+                                const diagB = new vscode.Diagnostic(diagRangeB, message, vscode.DiagnosticSeverity.Warning);
+                                diagB.source = 'Bevy Lens';
+                                if (!diagnosticsMap.has(sysB.filePath)) diagnosticsMap.set(sysB.filePath, []);
+                                diagnosticsMap.get(sysB.filePath)!.push(diagB);
+                            }
+                        }
+                    }
+                }
+
+                // 应用诊断到 VS Code
+                for (const [filePath, diags] of diagnosticsMap.entries()) {
+                    conflictDiagnostics.set(vscode.Uri.file(filePath), diags);
+                }
+            }
+
             // 更新全局注册表数据
             globalRegistryProvider.updateData(elements);
 
@@ -51,15 +183,15 @@ export async function activate(context: vscode.ExtensionContext) {
     // 刷新命令
     const refreshCmd = vscode.commands.registerCommand('bevy-lens.refresh', async () => {
         await refreshData();
-        vscode.window.showInformationMessage('Bevy Lens: 元素刷新完成');
+        vscode.window.showInformationMessage('Bevy Lens: Elements refreshed successfully');
     });
     context.subscriptions.push(refreshCmd);
 
     // 模糊匹配搜索命令
     const searchCmd = vscode.commands.registerCommand('bevy-lens.search', async () => {
         const filter = await vscode.window.showInputBox({
-            prompt: '请输入组件、资源、事件、消息或系统的名称进行检索匹配',
-            placeHolder: '例如: Player, Movement, Collision'
+            prompt: 'Enter name to filter Bevy elements',
+            placeHolder: 'e.g., Player, Movement, Collision'
         });
         
         if (filter !== undefined) {
@@ -68,8 +200,14 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(searchCmd);
 
+    // 重置搜索过滤条件命令
+    const resetSearchCmd = vscode.commands.registerCommand('bevy-lens.resetSearch', () => {
+        globalRegistryProvider.setSearchFilter('');
+    });
+    context.subscriptions.push(resetSearchCmd);
+
     // 5. 监听文件系统变动（自动增量重载）
-    const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{rs,wgsl}');
+    const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{rs,wgsl,wesl}');
     fileWatcher.onDidChange(async () => await refreshData());
     fileWatcher.onDidCreate(async () => await refreshData());
     fileWatcher.onDidDelete(async () => await refreshData());

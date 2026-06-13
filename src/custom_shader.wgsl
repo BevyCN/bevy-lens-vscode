@@ -3,6 +3,9 @@
 // 实现了法线贴图融合以及基于正弦波的时间发光动画效果。
 // 主要在渲染玩家的 Mesh 时作为材质载入。
 
+@group(0) @binding(0)
+var<uniform> color: vec4<f32>;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,

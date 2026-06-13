@@ -1,60 +1,55 @@
-# Bevy Lens - VS Code Extension
+# Bevy Lens
 
-**Bevy Lens** 是一款专为 Bevy 游戏引擎设计的 VS Code 语义化资源管理器与全局元素注册表插件。它通过静态分析您的 Rust 代码与 WGSL 着色器，极大地降低大型 Bevy 项目的 ECS 心智负担。
-
----
-
-## 🌟 核心功能
-
-1. **BEVY GLOBAL REGISTRY (全局资源管理器)**
-   - 按类别对项目中的 Bevy 概念进行归类展示，包括：**Components (组件)**、**Resources (资源)**、**Events (事件)**、**Messages (消息)**、**Plugins (插件)**、**Shaders (着色器)**、**Assets (资产)**、**Systems (系统)**。
-   - **文档注释预览**：直接在侧边栏显示元素定义上的 `///` 第一行注释。将鼠标悬停在列表项上，能展示富文本 Markdown 格式的完整文档注释。
-   - **全局模糊匹配**：支持通过快捷命令快速过滤匹配特定名称的 Bevy 元素。
-   - **点击精准定位**：点击任意元素，直接在编辑器中定位并跳转到代码定义行。
-
-2. **BEVY SEMANTIC EXPLORER (语义目录树)**
-   - 基于物理项目结构的增强版文件资源管理器。
-   - 支持 `.rs` 和 `.wgsl` 文件节点的展开，将文件内定义的 Bevy 元素以子树节点列出，并使用专属图标和 tag 进行区分。
-   - **双向定位联动**：在编辑器中切换打开的文件时，语义目录树会**自动展开并定位**到该文件的树节点；在目录树中点击元素同样会跳转到编辑器对应的代码行。
+**Bevy Lens** is a lightweight, high-performance VS Code extension designed specifically for the **Bevy Game Engine**. By statically analyzing your Rust codebase and WGSL shaders, Bevy Lens maps your ECS universe into a dedicated sidebar—drastically reducing cognitive load and helping you keep track of your game's systems, components, resources, states, and more.
 
 ---
 
-## 🚀 快速开始与调试
+## 🌟 Key Features
 
-1. **安装依赖**
-   在当前目录运行以下命令安装必要的 VS Code 扩展开发依赖：
-   ```bash
-   npm install
-   ```
+### 1. 🔍 Bevy Global Registry
+Get a centralized, organized view of all Bevy types defined in your project:
+*   **Structured Categories**: Automatically categorizes **Components**, **Resources**, **Events**, **States** (types deriving `States`), **Messages**, **Plugins**, **Shaders**, **Assets**, and **Systems**.
+*   **Fuzzy Search**: Quickly filter down massive registries to find the exact entity or system you need using a built-in search tool.
+*   **Code Navigation**: Click any item in the tree view to instantly jump directly to its definition in the editor.
 
-2. **启动调试环境**
-   - 在 VS Code 中打开本插件文件夹。
-   - 按下 `F5` 键，或者进入调试面板选择 **"Run Extension"** 启动。
-   - 这会弹出一个全新的 **[扩展开发宿主]** VS Code 窗口。
+### 2. 📁 Semantic Workspace Explorer
+An enhanced physical file explorer that reveals Bevy structures inline:
+*   **Inline File AST**: Expand `.rs` and `.wgsl` files to see what Bevy concepts are defined inside them.
+*   **Dynamic Synchronization**: Automatically reveals and focuses the active file in the sidebar explorer as you type or switch between tabs in your editor.
+*   **Custom Brand Icons**: Instantly differentiate between components, systems, and assets using dedicated VS Code codicons.
 
-3. **测试解析效果**
-   - 在新弹出的调试 VS Code 窗口中，**再次打开当前文件夹 (`bevydevplugin`)**。
-   - 点击侧边栏的 **Bevy Lens** 图标（机器人图标 `hubot`）。
-   - 您将直接在两个树形视图中看到我们为您准备的样例代码：
-     - `src/example.rs`：包含了自定义 Component、Resource、Event、Message、Plugin 以及 Systems 的解析。
-     - `src/custom_shader.wgsl`：包含了 WGSL Shader 的解析。
-   - 您可以尝试在 `src/example.rs` 中新建组件或修改注释，保存文件，观察侧边栏的树形图是如何自动实时热更新的！
+### 3. 📝 Rich Markdown Previews & LSP Diagnostics
+*   **Instant Documentation**: Displays the first line of your Rust triple-slash (`///`) docstrings directly beside registry items. Hovering over any item reveals the full Markdown documentation.
+*   **Live Error Markers**: Real-time integration with VS Code diagnostics (like `rust-analyzer`). If a component or system has compiler errors or warnings, Bevy Lens flags it with a status indicator (🔴 / 🟡) and displays LSP diagnostic messages directly inside the hover tooltip.
 
 ---
 
-## 📂 项目结构
+## ⚡ Requirements & Recommendations
 
-```
-.
-├── .vscode/
-│   ├── launch.json    # 调试启动配置
-│   └── tasks.json     # 自动编译任务 (tsc -watch)
-├── src/
-│   ├── bevyParser.ts  # Bevy 语义及注释解析器 (核心 AST 分析逻辑)
-│   ├── bevyTreeView.ts# VS Code TreeView 提供者 (全局注册表 & 目录树)
-│   ├── extension.ts   # 插件生命周期与双向同步监听入口
-│   ├── example.rs     # 样例 Rust 源码文件
-│   └── custom_shader.wgsl # 样例 WGSL 着色器文件
-├── package.json       # 插件贡献点与元数据
-└── tsconfig.json      # TypeScript 编译选项配置
-```
+*   **Rust & Bevy**: Projects built using Rust and the Bevy game engine.
+*   **Rust Analyzer (Recommended)**: For live compilation error/warning badges in the tree views, it is highly recommended to install the official [Rust Analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension.
+
+---
+
+## ⚙️ Extension Settings
+
+This extension contributes the following settings:
+
+*   `bevyLens.excludePaths`: An array of glob patterns to exclude from scanning (defaults to `["**/target/**", "**/.git/**"]`).
+*   `bevyLens.enableConflictDiagnostics`: A boolean setting to enable static query read/write conflict warnings for parallel systems (defaults to `false`).
+
+---
+
+## 📅 Release Notes
+
+### 0.1.0
+*   Initial release of Bevy Lens.
+*   Support for Components, Resources, Events, States, Messages, Plugins, Shaders, Assets, and Systems.
+*   LSP diagnostic synchronization.
+*   Workspace bidirectional location tracking.
+
+---
+
+## 📄 License
+
+This extension is licensed under the [MIT License](LICENSE).

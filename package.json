@@ -2,10 +2,14 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "bevy-developer",
   "engines": {
     "vscode": "^1.75.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hailalu/bevydevplugin"
   },
   "categories": [
     "Other"
@@ -48,6 +52,11 @@
         "command": "bevy-lens.search",
         "title": "Search Bevy Elements...",
         "icon": "$(search)"
+      },
+      {
+        "command": "bevy-lens.resetSearch",
+        "title": "Clear Search Filter",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
@@ -56,6 +65,11 @@
           "command": "bevy-lens.search",
           "when": "view == bevyGlobalRegistry",
           "group": "navigation@1"
+        },
+        {
+          "command": "bevy-lens.resetSearch",
+          "when": "view == bevyGlobalRegistry",
+          "group": "navigation@1.5"
         },
         {
           "command": "bevy-lens.refresh",
@@ -71,6 +85,11 @@
           "type": "array",
           "default": ["**/target/**", "**/.git/**"],
           "description": "Paths to exclude when scanning for Bevy assets."
+        },
+        "bevyLens.enableConflictDiagnostics": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable static query read/write conflict warnings for parallel systems."
         }
       }
     }

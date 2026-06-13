@@ -51,7 +51,8 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<CollisionEvent>()
            .add_systems(Startup, spawn_player)
-           .add_systems(Update, player_movement);
+           .add_systems(Update, player_movement)
+           .add_systems(Update, (read_config_sys, write_config_sys));
     }
 }
 
@@ -74,3 +75,127 @@ fn player_movement(
 ) {
     // 逻辑实现...
 }
+
+/// 自定义的 Bevy SystemParam 复合系统参数。
+///
+/// 用于在多个系统之间打包和复用复杂的查询 or 资源依赖关系。
+#[derive(SystemParam)]
+pub struct MyParam<'w, Marker: 'static> {
+    pub foo: Res<'w, GameConfig>,
+    pub marker: std::marker::PhantomData<Marker>,
+}
+
+#[derive(Component)]
+pub struct PlayerXp(pub u32);
+
+#[derive(Component)]
+pub struct PlayerName(pub String);
+
+#[derive(Component)]
+pub struct Health(pub f32);
+
+#[derive(Component)]
+pub struct Player;
+
+/// 玩家组合包。
+///
+/// 将玩家所需的所有基础组件与 SpriteBundle 组合在一起。
+#[derive(Bundle)]
+pub struct PlayerBundle {
+    pub xp: PlayerXp,
+    pub name: PlayerName,
+    pub health: Health,
+    pub marker: Player,
+    // 嵌套/包含另一个 Bundle。
+    pub sprite: SpriteBundle,
+}
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MyAudioSet;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MyInputSet;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MyInputKindSet {
+    Touch,
+    Mouse,
+    Gamepad,
+}
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MyGameplaySet {
+    Player,
+    Enemies,
+}
+
+/// 读取游戏全局配置的系统。
+///
+/// 用于检测冲突 Linter。
+fn read_config_sys(config: Res<GameConfig>) {
+    // 逻辑实现...
+}
+
+/// 修改游戏全局配置的可变写系统。
+///
+/// 用于检测冲突 Linter。
+fn write_config_sys(mut config: ResMut<GameConfig>) {
+    // 逻辑实现...
+}
+
+/// 自定义的 Bevy 材质结构体，用于着色器桥接绑定测试。
+#[derive(AsBindGroup, TypePath, Asset, Clone)]
+pub struct CustomMaterial {
+    /// 颜色 Uniform，绑定为 0
+    #[uniform(0, color)]
+    pub color: Color,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 测试玩家生成系统是否正常的测试系统。
+    fn test_player_spawn(
+        mut commands: Commands,
+        query: Query<&PlayerController>,
+    ) {
+        // 单元测试中的逻辑...
+    }
+
+    /// 测试分数更新系统的测试系统。
+    fn test_score_update(
+        config: Res<GameConfig>,
+    ) {
+        // 单元测试中的逻辑...
+    }
+
+    /// 测试用的组件。
+    #[derive(Component)]
+    struct TestMockPlayer;
+
+    /// 测试用的资源。
+    #[derive(Resource)]
+    struct TestMockConfig;
+
+    /// 测试用的 SystemParam 参数。
+    #[derive(SystemParam)]
+    struct TestMockParam<'w> {
+        query: Query<'w, &'static PlayerController>,
+    }
+
+    /// 测试用的 Bundle 组合包。
+    #[derive(Bundle)]
+    struct TestMockBundle {
+        player: TestMockPlayer,
+    }
+
+    /// 测试用的事件。
+    #[derive(Event)]
+    struct TestMockEvent;
+
+    /// 测试用的系统集。
+    #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+    struct TestMockSet;
+}
+

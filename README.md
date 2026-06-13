@@ -1,6 +1,6 @@
 # Bevy Lens
 
-**Bevy Lens** is a lightweight, high-performance VS Code extension designed specifically for the **Bevy Game Engine**. By statically analyzing your Rust codebase and WGSL shaders, Bevy Lens maps your ECS universe into a dedicated sidebar—drastically reducing cognitive load and helping you keep track of your game's systems, components, resources, states, and more.
+**Bevy Lens** is a lightweight, high-performance VS Code extension designed specifically for the **Bevy Game Engine**. By statically analyzing your Rust codebase, WGSL/WESL shaders, Bevy Lens maps your ECS universe into a dedicated sidebar—drastically reducing cognitive load and helping you keep track of your game's systems, components, resources, states, and more.
 
 ---
 
@@ -8,19 +8,23 @@
 
 ### 1. 🔍 Bevy Global Registry
 Get a centralized, organized view of all Bevy types defined in your project:
-*   **Structured Categories**: Automatically categorizes **Components**, **Resources**, **Events**, **States** (types deriving `States`), **Messages**, **Plugins**, **Shaders**, **Assets**, and **Systems**.
-*   **Fuzzy Search**: Quickly filter down massive registries to find the exact entity or system you need using a built-in search tool.
+*   **Structured Categories**: Automatically categorizes **Components**, **Resources**, **Events**, **States**, **Messages**, **Plugins**, **Shaders**, **Assets**, and **Systems**.
+*   **Multi-crate & Workspace Hierarchies**: Groups your ECS registry by Cargo crates, mapping structures directly under their respective packages.
+*   **Examples & Bins Sub-categorization**: Automatically isolates systems and types inside `examples/` and `src/bin/` into dedicated nested folders (e.g., `Example: ui/button`), ensuring that game logic and examples never clutter the core library tree.
+*   **Test Code Separation**: Scours `mod tests` and `#[cfg(test)]` modules to isolate and group test components, test resources, and test systems (under dedicated "Test ECS Types", "Test Systems", etc.) to keep production environments clean.
+*   **Fuzzy Search & Filtering**: Quickly filter down massive registries using positive (`Player`) and negative (`!Collision`) query selectors.
 *   **Code Navigation**: Click any item in the tree view to instantly jump directly to its definition in the editor.
 
 ### 2. 📁 Semantic Workspace Explorer
 An enhanced physical file explorer that reveals Bevy structures inline:
-*   **Inline File AST**: Expand `.rs` and `.wgsl` files to see what Bevy concepts are defined inside them.
+*   **Inline File AST**: Expand `.rs`, `.wgsl`, and `.wesl` files to see what Bevy concepts are defined inside them.
 *   **Dynamic Synchronization**: Automatically reveals and focuses the active file in the sidebar explorer as you type or switch between tabs in your editor.
-*   **Custom Brand Icons**: Instantly differentiate between components, systems, and assets using dedicated VS Code codicons.
+*   **Custom Brand Icons**: Instantly differentiate between components, systems, and assets using dedicated VS Code codicons matching your active icon theme.
 
-### 3. 📝 Rich Markdown Previews & LSP Diagnostics
-*   **Instant Documentation**: Displays the first line of your Rust triple-slash (`///`) docstrings directly beside registry items. Hovering over any item reveals the full Markdown documentation.
-*   **Live Error Markers**: Real-time integration with VS Code diagnostics (like `rust-analyzer`). If a component or system has compiler errors or warnings, Bevy Lens flags it with a status indicator (🔴 / 🟡) and displays LSP diagnostic messages directly inside the hover tooltip.
+### 3. 📝 Rich Previews, Shader Binding Bridge & Concurrency Diagnostics
+*   **Instant Documentation**: Displays the first line of your Rust triple-slash (`///`) docstrings beside registry items. Hovering over any item reveals the full Markdown documentation.
+*   **Shader Bridge & Entry Points**: Extracts `@binding` layouts (uniforms, textures, samplers) and registers entry points (`@vertex`, `@fragment`, `@compute`) including compute workgroup sizes (`@workgroup_size`), allowing seamless shader pipeline inspection.
+*   **Parallel Query Write-Conflict Linter**: Statically checks systems registered in the same schedule phase. If two systems read/write to the same component/resource mutably without declared ordering (`.after()`, `.before()`, `.in_set()`), Bevy Lens flags it with a status indicator (🔴 / 🟡) and warns you of potential race conditions.
 
 ---
 
@@ -41,6 +45,17 @@ This extension contributes the following settings:
 ---
 
 ## 📅 Release Notes
+
+### 0.1.2
+*   Support for cargo multi-crate workspaces.
+*   Intelligent nested grouping for examples (`examples/`) and binaries (`src/bin/`), resolving down to individual files and folders.
+*   Full support for compute shader (`@compute`) entry point extraction and workgroup size parsing.
+*   Isolate test-scoped derived Bevy items and systems inside `mod tests` or `#[cfg(test)]` modules.
+
+### 0.1.1
+*   Support for `.wesl` (WebGPU Extended Shading Language) shader files.
+*   Static write-conflict warnings and order checkers for parallel systems.
+*   Expanded registry metadata, including schedule phases, system-sets, and data access signatures.
 
 ### 0.1.0
 *   Initial release of Bevy Lens.

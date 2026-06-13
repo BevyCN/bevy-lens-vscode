@@ -1,0 +1,94 @@
+{
+  "name": "bevy-lens",
+  "displayName": "Bevy Lens",
+  "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
+  "version": "0.1.0",
+  "publisher": "bevy-developer",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "bevy-lens-sidebar",
+          "title": "Bevy Lens",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "bevy-lens-sidebar": [
+        {
+          "id": "bevyGlobalRegistry",
+          "name": "BEVY GLOBAL REGISTRY",
+          "visibility": "visible"
+        },
+        {
+          "id": "bevySemanticExplorer",
+          "name": "BEVY SEMANTIC EXPLORER",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "bevy-lens.refresh",
+        "title": "Refresh Bevy Lens",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "bevy-lens.search",
+        "title": "Search Bevy Elements...",
+        "icon": "$(search)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "bevy-lens.search",
+          "when": "view == bevyGlobalRegistry",
+          "group": "navigation@1"
+        },
+        {
+          "command": "bevy-lens.refresh",
+          "when": "view == bevyGlobalRegistry || view == bevySemanticExplorer",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Bevy Lens",
+      "properties": {
+        "bevyLens.excludePaths": {
+          "type": "array",
+          "default": ["**/target/**", "**/.git/**"],
+          "description": "Paths to exclude when scanning for Bevy assets."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "watch-tests": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.5",
+    "eslint": "^8.36.0",
+    "@typescript-eslint/parser": "^5.55.0",
+    "@typescript-eslint/eslint-plugin": "^5.55.0"
+  }
+}

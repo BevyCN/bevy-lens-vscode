@@ -1,0 +1,5 @@
+out
+node_modules
+.vscode-test
+*.vsix
+bevy_map.json

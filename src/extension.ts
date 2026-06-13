@@ -5,14 +5,14 @@ import { BevyGlobalRegistryProvider, BevySemanticExplorerProvider } from './bevy
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Bevy Lens extension is now active!');
 
-    // 1. 初始化 TreeDataProviders
-    const globalRegistryProvider = new BevyGlobalRegistryProvider();
+    // 1. 初始化 TreeDataProviders (传入 context 以获取插件本地打包的资源路径)
+    const globalRegistryProvider = new BevyGlobalRegistryProvider(context);
     const globalTreeView = vscode.window.createTreeView('bevyGlobalRegistry', {
         treeDataProvider: globalRegistryProvider,
         showCollapseAll: true
     });
 
-    const semanticExplorerProvider = new BevySemanticExplorerProvider();
+    const semanticExplorerProvider = new BevySemanticExplorerProvider(context);
     const explorerTreeView = vscode.window.createTreeView('bevySemanticExplorer', {
         treeDataProvider: semanticExplorerProvider,
         showCollapseAll: true

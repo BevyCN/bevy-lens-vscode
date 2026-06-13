@@ -24,7 +24,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     private elements: BevyElement[] = [];
     private filterText: string = '';
 
-    constructor() {}
+    constructor(private readonly context: vscode.ExtensionContext) {}
 
     public updateData(elements: BevyElement[]) {
         this.elements = elements;
@@ -187,7 +187,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
     private workspaceRoot: string = '';
     private nodeMap: Map<string, ExplorerNode> = new Map(); // 用于实现 getParent
 
-    constructor() {}
+    constructor(private readonly context: vscode.ExtensionContext) {}
 
     public updateData(elements: BevyElement[], workspaceRoot: string) {
         this.elements = elements;
@@ -215,6 +215,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
     }
 
     getTreeItem(node: ExplorerNode): vscode.TreeItem {
+        // 恢复成：目录与文件都是 Collapsed 可折叠/展开结构！
         const item = new vscode.TreeItem(
             node.label,
             node.kind === 'element' 
@@ -222,15 +223,23 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 : vscode.TreeItemCollapsibleState.Collapsed
         );
 
-        // 利用 resourceUri 联动 VS Code 的文件图标主题 (File Icon Theme)
-        item.resourceUri = vscode.Uri.file(node.fsPath);
-
         if (node.kind === 'directory') {
             item.contextValue = 'directory';
-            // 不显式设置 iconPath，VS Code 会根据 resourceUri 自动配上文件夹图标
+            item.resourceUri = vscode.Uri.file(node.fsPath);
+            // 目录依然使用 VS Code 自动配的文件夹图标
         } else if (node.kind === 'file') {
             item.contextValue = 'file';
-            // 不显式设置 iconPath，VS Code 会根据 resourceUri 自动配上 .rs / .wgsl 等文件图标
+
+            // ✨【关键修复】✨
+            // 因为本文件节点是可折叠结构 (Collapsed)，VS Code 默认强制展示为文件夹图标。
+            // 我们通过直接为 item.iconPath 赋值我们在 resources/ 中打包的 Rust/WGSL 专属 SVG 图标路径，
+            // 成功覆盖掉 VS Code 文件夹图标的强制设定，让它既能展开，又显示为正确的 Rust 螃蟹图标！
+            const ext = path.extname(node.fsPath);
+            if (ext === '.rs') {
+                item.iconPath = vscode.Uri.file(path.join(this.context.extensionPath, 'resources', 'rust.svg'));
+            } else if (ext === '.wgsl') {
+                item.iconPath = vscode.Uri.file(path.join(this.context.extensionPath, 'resources', 'wgsl.svg'));
+            }
 
             // 读取 rust-analyzer 的诊断报错情况
             const fileUri = vscode.Uri.file(node.fsPath);
@@ -277,6 +286,13 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             markdown.appendMarkdown(`* 物理路径: \`${node.fsPath}\``);
             item.tooltip = markdown;
 
+            // 让文件本身支持点击命令直接打开
+            item.command = {
+                command: 'vscode.open',
+                title: 'Open File',
+                arguments: [fileUri]
+            };
+
         } else if (node.kind === 'element' && node.elementData) {
             const el = node.elementData;
             const fileUri = vscode.Uri.file(el.filePath);
@@ -300,7 +316,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 statusTag = ' 🟡';
             }
 
-            item.label = el.name + statusTag;
+            item.label = node.label + statusTag;
             item.description = el.description;
             
             // 富文本注释
@@ -344,7 +360,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     getParent(node: ExplorerNode): vscode.ProviderResult<ExplorerNode> {
         if (node.kind === 'element') {
-            // 元素的父节点是其文件节点
+            // 恢复真实的父子结构：元素的父节点是它所属的文件节点！
             let parentNode = this.nodeMap.get(node.fsPath);
             if (!parentNode) {
                 parentNode = new ExplorerNode(node.fsPath, path.basename(node.fsPath), 'file', node.fsPath);
@@ -378,18 +394,19 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             return [];
         }
 
-        // 如果节点是 file，返回该文件下的 Bevy 元素
+        // 如果节点是 file，返回该文件下的 Bevy 元素子节点（重新回归折叠树状层级！）
         if (node && node.kind === 'file') {
             const fileElements = this.elements.filter(e => e.filePath === currentPath);
             return fileElements.map(el => {
                 const key = `${el.filePath}:${el.name}:${el.type}`;
+                // 恢复默认的名称，不需要空格缩进了（因为现在是标准的展开结构了）
                 const elNode = new ExplorerNode(key, el.name, 'element', el.filePath, el);
                 this.nodeMap.set(key, elNode);
                 return elNode;
             });
         }
 
-        // 否则，读取物理目录
+        // 否则当前节点是目录，读取物理目录下的子目录和子文件
         let items: string[] = [];
         try {
             items = fs.readdirSync(currentPath);
@@ -397,9 +414,6 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             return [];
         }
 
-        const nodes: ExplorerNode[] = [];
-        
-        // 分别收集目录和文件
         const dirs: ExplorerNode[] = [];
         const files: ExplorerNode[] = [];
 
@@ -422,7 +436,6 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 dirs.push(dirNode);
             } else if (stat.isFile()) {
                 const ext = path.extname(item);
-                // 我们只显示包含 Bevy 元素的 .rs/.wgsl 文件，或者作为项目骨架展示所有 .rs/.wgsl
                 if (ext === '.rs' || ext === '.wgsl') {
                     const fileNode = new ExplorerNode(fullPath, item, 'file', fullPath);
                     this.nodeMap.set(fullPath, fileNode);

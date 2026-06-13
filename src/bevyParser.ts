@@ -25,6 +25,10 @@ export interface BevyElement {
     bindGroupMetadata?: {
         bindings: { binding: number; type: 'uniform' | 'texture' | 'sampler'; name: string }[];
     };
+    shaderMetadata?: {
+        bindings: { binding: number; type: 'uniform' | 'texture' | 'sampler'; name: string }[];
+        entryPoints: { name: string; type: 'vertex' | 'fragment' | 'compute'; workgroupSize?: string }[];
+    };
 }
 
 export class BevyParser {
@@ -448,6 +452,8 @@ export class BevyParser {
         const docstring = docLines.join('\n');
 
         const bindings: { binding: number; type: 'uniform' | 'texture' | 'sampler'; name: string }[] = [];
+        const entryPoints: { name: string; type: 'vertex' | 'fragment' | 'compute'; workgroupSize?: string }[] = [];
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
             const bindingMatch = line.match(/@group\(\d+\)\s*@binding\(\s*(\d+)\s*\)\s*var(?:<uniform>)?\s*([A-Za-z0-9_]+)\s*:/);
@@ -457,6 +463,53 @@ export class BevyParser {
                 else if (line.includes('sampler')) bindingType = 'sampler';
                 bindings.push({ binding: parseInt(bindingMatch[1]), type: bindingType, name: bindingMatch[2] });
             }
+
+            // 识别顶点、片元、计算着色器入口点
+            // 例如：@vertex fn vs_main(...) 或 @compute @workgroup_size(8, 8, 1) fn init(...)
+            if (line.includes('fn ')) {
+                // 向上寻找装饰器属性，检测最近 3 行以匹配多行装饰器的情形
+                let decorators = '';
+                for (let k = Math.max(0, i - 3); k <= i; k++) {
+                    decorators += ' ' + lines[k].trim();
+                }
+
+                let type: 'vertex' | 'fragment' | 'compute' | null = null;
+                if (decorators.includes('@vertex')) {
+                    type = 'vertex';
+                } else if (decorators.includes('@fragment')) {
+                    type = 'fragment';
+                } else if (decorators.includes('@compute')) {
+                    type = 'compute';
+                }
+
+                if (type) {
+                    const fnMatch = line.match(/fn\s+([A-Za-z0-9_]+)/);
+                    if (fnMatch) {
+                        let workgroupSize: string | undefined;
+                        if (type === 'compute') {
+                            const sizeMatch = decorators.match(/@workgroup_size\(([^)]+)\)/);
+                            if (sizeMatch) {
+                                workgroupSize = sizeMatch[1].trim();
+                            }
+                        }
+                        entryPoints.push({
+                            name: fnMatch[1],
+                            type,
+                            workgroupSize
+                        });
+                    }
+                }
+            }
+        }
+
+        // 动态追加入口点信息到 docstring
+        let finalDocstring = docstring || `WGSL shader asset located at ${fileName}.`;
+        if (entryPoints.length > 0) {
+            finalDocstring += `\n\n### 🚀 Entry Points\n`;
+            for (const ep of entryPoints) {
+                const wgStr = ep.workgroupSize ? ` (workgroup_size: \`${ep.workgroupSize}\`)` : '';
+                finalDocstring += `* **@${ep.type}** -> \`fn ${ep.name}()\`${wgStr}\n`;
+            }
         }
 
         elements.push({
@@ -465,7 +518,11 @@ export class BevyParser {
             filePath,
             line: 1,
             description: firstLine || 'WGSL Shader file',
-            docstring: docstring || `WGSL shader asset located at ${fileName}.`
+            docstring: finalDocstring,
+            shaderMetadata: {
+                bindings,
+                entryPoints
+            }
         });
     }
 }

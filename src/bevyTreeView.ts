@@ -68,7 +68,27 @@ function buildElementTooltip(element: BevyElement, elementErrors: vscode.Diagnos
         element.bindGroupMetadata.bindings.forEach(b => {
             markdown.appendMarkdown(`* \`@binding(${b.binding})\` **${b.type}** -> \`${b.name}\`\n`);
         });
-        markdown.appendMarkdown(`\n`);
+        markdown.appendMarkdown('\n');
+    }
+
+    // Shader Uniforms & Entry Points 元数据展示
+    if (element.shaderMetadata) {
+        markdown.appendMarkdown(`---\n\n`);
+        if (element.shaderMetadata.bindings.length > 0) {
+            markdown.appendMarkdown(`#### 🎨 **Shader Bindings**\n`);
+            element.shaderMetadata.bindings.forEach(b => {
+                markdown.appendMarkdown(`* \`@binding(${b.binding})\` **${b.type}** -> \`${b.name}\`\n`);
+            });
+            markdown.appendMarkdown('\n');
+        }
+        if (element.shaderMetadata.entryPoints.length > 0) {
+            markdown.appendMarkdown(`#### 🚀 **Shader Entry Points**\n`);
+            element.shaderMetadata.entryPoints.forEach(ep => {
+                const wg = ep.workgroupSize ? ` (workgroup_size: \`${ep.workgroupSize}\`)` : '';
+                markdown.appendMarkdown(`* **@${ep.type}** -> \`fn ${ep.name}()\`${wg}\n`);
+            });
+            markdown.appendMarkdown('\n');
+        }
     }
 
     markdown.appendMarkdown(`---\n\n`);

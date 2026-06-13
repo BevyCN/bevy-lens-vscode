@@ -29,3 +29,11 @@ fn vs_main(model: VertexInput) -> VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(in.uv, 0.5, 1.0);
 }
+
+@compute @workgroup_size(8, 8, 1)
+fn init(
+    @builtin(global_invocation_id) global_id: vec3<u32>
+) {
+    // 计算着色器逻辑...
+}
+

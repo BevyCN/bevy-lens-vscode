@@ -7,6 +7,7 @@ export interface BevyElement {
     type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet';
     filePath: string;
     crateName?: string; // 所属的 Crate 名称
+    sourceTarget?: { type: 'lib' | 'bin' | 'example'; name?: string }; // Rust 构建目标类型与名字
     line: number;
     description: string; // 首行注释摘要
     docstring: string;   // 完整文档注释
@@ -74,9 +75,35 @@ export class BevyParser {
             return 'unknown';
         };
 
-        // 填充每个元素的 crateName
+        // 辅助检测构建目标类型：检测路径中是否含有 examples 目录或是 src/bin
+        const getSourceTarget = (filePath: string): BevyElement['sourceTarget'] => {
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            const parts = normalizedPath.split('/');
+            
+            const examplesIndex = parts.indexOf('examples');
+            if (examplesIndex !== -1 && examplesIndex < parts.length - 1) {
+                // 例如 examples/xxx.rs 或 examples/xxx/main.rs
+                const exampleSub = parts[examplesIndex + 1];
+                const exampleName = exampleSub.endsWith('.rs') ? exampleSub.replace(/\.rs$/, '') : exampleSub;
+                return { type: 'example', name: exampleName };
+            }
+            
+            const srcIndex = parts.indexOf('src');
+            if (srcIndex !== -1 && srcIndex < parts.length - 1 && parts[srcIndex + 1] === 'bin') {
+                if (srcIndex < parts.length - 2) {
+                    const binSub = parts[srcIndex + 2];
+                    const binName = binSub.endsWith('.rs') ? binSub.replace(/\.rs$/, '') : binSub;
+                    return { type: 'bin', name: binName };
+                }
+            }
+
+            return { type: 'lib' };
+        };
+
+        // 填充每个元素的 crateName 与 sourceTarget
         for (const element of elements) {
             element.crateName = getCrateName(element.filePath);
+            element.sourceTarget = getSourceTarget(element.filePath);
         }
 
         // 全局后处理步骤：分析跨文件的 add_systems 调度配置

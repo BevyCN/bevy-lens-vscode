@@ -126,7 +126,16 @@ export class CrateCategory {
     ) {}
 }
 
-export type RegistryNode = RegistryCategory | CrateCategory | BevyElement;
+export class TargetCategory {
+    constructor(
+        public readonly label: string, // 例如 "Examples", "Bins"
+        public readonly targetType: 'example' | 'bin' | 'lib',
+        public readonly parentCrate: CrateCategory,
+        public readonly specificName?: string // 具体的 example 名字或 bin 名字
+    ) {}
+}
+
+export type RegistryNode = RegistryCategory | CrateCategory | TargetCategory | BevyElement;
 
 export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<RegistryNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<RegistryNode | undefined | null | void> = new vscode.EventEmitter<RegistryNode | undefined | null | void>();
@@ -184,6 +193,22 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             );
             item.contextValue = 'crateCategory';
             item.iconPath = new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.purple'));
+            return item;
+        } else if (element instanceof TargetCategory) {
+            let label = element.label;
+            const items = this.getFilteredElementsByTarget(element);
+            const item = new vscode.TreeItem(
+                `${label} (${items.length})`,
+                vscode.TreeItemCollapsibleState.Collapsed
+            );
+            item.contextValue = 'targetCategory';
+            if (element.targetType === 'example') {
+                item.iconPath = new vscode.ThemeIcon('beaker', new vscode.ThemeColor('charts.orange'));
+            } else if (element.targetType === 'bin') {
+                item.iconPath = new vscode.ThemeIcon('terminal', new vscode.ThemeColor('charts.blue'));
+            } else {
+                item.iconPath = new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.green'));
+            }
             return item;
         } else {
             // 检查全局注册表中的元素其所在文件是否有编译错误
@@ -264,15 +289,62 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             const elements = this.getFilteredElementsByType(element.type);
             const crateNames = Array.from(new Set(elements.map(e => e.crateName || 'unknown'))).sort();
             
-            // 如果仅有一个 crate 或是未定义，可以考虑直接显示元素，但为了层级一致性，我们始终显示 Crate 级别
             return crateNames.map(crate => new CrateCategory(crate, element));
         }
 
         if (element instanceof CrateCategory) {
-            return this.getFilteredElementsByTypeAndCrate(element.parentCategory.type, element.crateName);
+            const items = this.getFilteredElementsByTypeAndCrate(element.parentCategory.type, element.crateName);
+            
+            // 获取该 Crate 下的所有 examples 以及 bins，以便在 Crate 下划分层级
+            const hasExamples = items.some(e => e.sourceTarget?.type === 'example');
+            const hasBins = items.some(e => e.sourceTarget?.type === 'bin');
+            
+            const nodes: RegistryNode[] = [];
+            
+            // 1. examples 放到 Examples 汇总节点下
+            if (hasExamples) {
+                const exampleNames = Array.from(new Set(
+                    items.filter(e => e.sourceTarget?.type === 'example').map(e => e.sourceTarget?.name || 'unknown')
+                )).sort();
+                
+                // 每一个具体的 example 为一个节点
+                exampleNames.forEach(name => {
+                    nodes.push(new TargetCategory(`Example: ${name}`, 'example', element, name));
+                });
+            }
+            
+            // 2. bins 放到 Bins 汇总节点下
+            if (hasBins) {
+                const binNames = Array.from(new Set(
+                    items.filter(e => e.sourceTarget?.type === 'bin').map(e => e.sourceTarget?.name || 'unknown')
+                )).sort();
+                binNames.forEach(name => {
+                    nodes.push(new TargetCategory(`Bin: ${name}`, 'bin', element, name));
+                });
+            }
+            
+            // 3. 不属于 examples 和 bins 的系统直接放在 Crate 下展示 (lib 类型)
+            const libItems = items.filter(e => !e.sourceTarget || e.sourceTarget.type === 'lib');
+            nodes.push(...libItems);
+            
+            return nodes;
+        }
+
+        if (element instanceof TargetCategory) {
+            return this.getFilteredElementsByTarget(element);
         }
 
         return [];
+    }
+
+    private getFilteredElementsByTarget(target: TargetCategory): BevyElement[] {
+        const items = this.getFilteredElementsByTypeAndCrate(target.parentCrate.parentCategory.type, target.parentCrate.crateName);
+        return items.filter(e => {
+            if (!e.sourceTarget) return false;
+            if (e.sourceTarget.type !== target.targetType) return false;
+            if (target.specificName && e.sourceTarget.name !== target.specificName) return false;
+            return true;
+        });
     }
 
     private getFilteredElementsByTypeAndCrate(type: BevyElement['type'], crateName: string): BevyElement[] {

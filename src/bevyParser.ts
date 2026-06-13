@@ -82,19 +82,44 @@ export class BevyParser {
             
             const examplesIndex = parts.indexOf('examples');
             if (examplesIndex !== -1 && examplesIndex < parts.length - 1) {
-                // 例如 examples/xxx.rs 或 examples/xxx/main.rs
-                const exampleSub = parts[examplesIndex + 1];
-                const exampleName = exampleSub.endsWith('.rs') ? exampleSub.replace(/\.rs$/, '') : exampleSub;
+                // 可能是 examples/xxx.rs 
+                // 或者是 examples/group/xxx.rs
+                // 或者是 examples/group/xxx/main.rs
+                // 我们把 examples 之后直到具体文件的剩余路径路径拼接出来
+                const subParts = parts.slice(examplesIndex + 1);
+                
+                // 去除尾部的 main.rs
+                if (subParts.length > 1 && subParts[subParts.length - 1] === 'main.rs') {
+                    subParts.pop();
+                }
+                
+                // 去除最后一个元素的 .rs 后缀
+                if (subParts.length > 0) {
+                    const lastIdx = subParts.length - 1;
+                    if (subParts[lastIdx].endsWith('.rs')) {
+                        subParts[lastIdx] = subParts[lastIdx].replace(/\.rs$/, '');
+                    }
+                }
+                
+                // 用 '/' 拼接起来作为精细划分的例子程序名称
+                const exampleName = subParts.join('/');
                 return { type: 'example', name: exampleName };
             }
             
             const srcIndex = parts.indexOf('src');
             if (srcIndex !== -1 && srcIndex < parts.length - 1 && parts[srcIndex + 1] === 'bin') {
-                if (srcIndex < parts.length - 2) {
-                    const binSub = parts[srcIndex + 2];
-                    const binName = binSub.endsWith('.rs') ? binSub.replace(/\.rs$/, '') : binSub;
-                    return { type: 'bin', name: binName };
+                const subParts = parts.slice(srcIndex + 2);
+                if (subParts.length > 1 && subParts[subParts.length - 1] === 'main.rs') {
+                    subParts.pop();
                 }
+                if (subParts.length > 0) {
+                    const lastIdx = subParts.length - 1;
+                    if (subParts[lastIdx].endsWith('.rs')) {
+                        subParts[lastIdx] = subParts[lastIdx].replace(/\.rs$/, '');
+                    }
+                }
+                const binName = subParts.join('/');
+                return { type: 'bin', name: binName };
             }
 
             return { type: 'lib' };

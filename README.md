@@ -15,16 +15,28 @@ Get a centralized, organized view of all Bevy types defined in your project:
 *   **Fuzzy Search & Filtering**: Quickly filter down massive registries using positive (`Player`) and negative (`!Collision`) query selectors.
 *   **Code Navigation**: Click any item in the tree view to instantly jump directly to its definition in the editor.
 
+<p align="center">
+  <img src="images/globalregistry.jpg" alt="Bevy Global Registry" width="600px">
+</p>
+
 ### 2. 📁 Semantic Workspace Explorer
 An enhanced physical file explorer that reveals Bevy structures inline:
 *   **Inline File AST**: Expand `.rs`, `.wgsl`, and `.wesl` files to see what Bevy concepts are defined inside them.
 *   **Dynamic Synchronization**: Automatically reveals and focuses the active file in the sidebar explorer as you type or switch between tabs in your editor.
 *   **Custom Brand Icons**: Instantly differentiate between components, systems, and assets using dedicated VS Code codicons matching your active icon theme.
 
+<p align="center">
+  <img src="images/explore.jpg" alt="Semantic Workspace Explorer" width="600px">
+</p>
+
 ### 3. 📝 Rich Previews, Shader Binding Bridge & Concurrency Diagnostics
 *   **Instant Documentation**: Displays the first line of your Rust triple-slash (`///`) docstrings beside registry items. Hovering over any item reveals the full Markdown documentation.
 *   **Shader Bridge & Entry Points**: Extracts `@binding` layouts (uniforms, textures, samplers) and registers entry points (`@vertex`, `@fragment`, `@compute`) including compute workgroup sizes (`@workgroup_size`), allowing seamless shader pipeline inspection.
 *   **Parallel Query Write-Conflict Linter**: Statically checks systems registered in the same schedule phase. If two systems read/write to the same component/resource mutably without declared ordering (`.after()`, `.before()`, `.in_set()`), Bevy Lens flags it with a status indicator (🔴 / 🟡) and warns you of potential race conditions.
+
+<p align="center">
+  <img src="images/popup.jpg" alt="Diagnostics and Rich Previews" width="600px">
+</p>
 
 ---
 

@@ -60,6 +60,9 @@ This extension contributes the following settings:
 
 ## 📅 Release Notes
 
+### 0.1.11
+*   Fixed active editor synchronization highlight to correctly render the native focus selection background in Bevy Semantic Explorer.
+
 ### 0.1.10
 *   Added **New File from Template...** command with 4 built-in Bevy templates (Plugin, System, ECS Types, WGSL Shader).
 *   Optimized file tree nodes to utilize VS Code's active **File Icon Theme** natively.

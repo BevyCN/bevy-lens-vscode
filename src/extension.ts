@@ -237,9 +237,10 @@ export async function activate(context: vscode.ExtensionContext) {
         const fileNode = semanticExplorerProvider.findFileNode(filePath);
         
         if (fileNode) {
-            // 通过 select: false 和 focus: false 可以极大地避免由于 reveal 动作抢占当前活动窗口焦点的问题
+            // 通过 select: true 会高亮选择该节点（使用编辑器主题自带的灰色背景），
+            // focus: false 能够确保键盘焦点仍然稳定留在编辑器中不被抢占。
             explorerTreeView.reveal(fileNode, {
-                select: false,
+                select: true,
                 focus: false,
                 expand: true
             }).then(

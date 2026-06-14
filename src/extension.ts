@@ -73,89 +73,98 @@ export async function activate(context: vscode.ExtensionContext) {
             // 读取配置，如果用户启用了并发诊断才执行检测逻辑
             const config = vscode.workspace.getConfiguration('bevyLens');
             const enableConflictDiagnostics = config.get<boolean>('enableConflictDiagnostics', false);
-
             if (enableConflictDiagnostics) {
                 // 检测系统并发读写冲突（一帧延迟问题）
-                const systems = elements.filter(e => e.type === 'System' && e.systemMetadata);
+                const systems = elements.filter(e => e.type === 'System' && e.systemMetadata && e.systemMetadata.schedulePhase);
                 const diagnosticsMap = new Map<string, vscode.Diagnostic[]>();
 
-                for (let i = 0; i < systems.length; i++) {
-                    const sysA = systems[i];
-                    const metaA = sysA.systemMetadata!;
-                    if (!metaA.schedulePhase) continue;
+                // 将 systems 按照 schedulePhase 分组以减少比对数量
+                const phaseGroups = new Map<string, typeof systems>();
+                for (const sys of systems) {
+                    const phase = sys.systemMetadata!.schedulePhase!;
+                    if (!phaseGroups.has(phase)) {
+                        phaseGroups.set(phase, []);
+                    }
+                    phaseGroups.get(phase)!.push(sys);
+                }
 
-                    for (let j = i + 1; j < systems.length; j++) {
-                        const sysB = systems[j];
-                        const metaB = sysB.systemMetadata!;
-                        if (!metaB.schedulePhase || metaA.schedulePhase !== metaB.schedulePhase) continue;
+                for (const [phase, groupSystems] of phaseGroups.entries()) {
+                    for (let i = 0; i < groupSystems.length; i++) {
+                        const sysA = groupSystems[i];
+                        const metaA = sysA.systemMetadata!;
 
-                        let conflictItem = '';
-                        let isConflict = false;
+                        for (let j = i + 1; j < groupSystems.length; j++) {
+                            const sysB = groupSystems[j];
+                            const metaB = sysB.systemMetadata!;
 
-                        // 1. 资源冲突
-                        for (const res of metaA.mutableResources) {
-                            if (metaB.mutableResources.includes(res) || metaB.readableResources.includes(res)) {
-                                conflictItem = `resource '${res}'`;
-                                isConflict = true;
-                                break;
-                            }
-                        }
-                        if (!isConflict) {
-                            for (const res of metaB.mutableResources) {
-                                if (metaA.readableResources.includes(res)) {
+                            let conflictItem = '';
+                            let isConflict = false;
+
+                            // 1. 资源冲突
+                            for (const res of metaA.mutableResources) {
+                                if (metaB.mutableResources.includes(res) || metaB.readableResources.includes(res)) {
                                     conflictItem = `resource '${res}'`;
                                     isConflict = true;
                                     break;
                                 }
                             }
-                        }
-
-                        // 2. 组件冲突
-                        if (!isConflict) {
-                            for (const comp of metaA.mutableComponents) {
-                                if (metaB.mutableComponents.includes(comp) || metaB.readableComponents.includes(comp)) {
-                                    conflictItem = `component '${comp}'`;
-                                    isConflict = true;
-                                    break;
+                            if (!isConflict) {
+                                for (const res of metaB.mutableResources) {
+                                    if (metaA.readableResources.includes(res)) {
+                                        conflictItem = `resource '${res}'`;
+                                        isConflict = true;
+                                        break;
+                                    }
                                 }
                             }
-                        }
-                        if (!isConflict) {
-                            for (const comp of metaB.mutableComponents) {
-                                if (metaA.readableComponents.includes(comp)) {
-                                    conflictItem = `component '${comp}'`;
-                                    isConflict = true;
-                                    break;
+
+                            // 2. 组件冲突
+                            if (!isConflict) {
+                                for (const comp of metaA.mutableComponents) {
+                                    if (metaB.mutableComponents.includes(comp) || metaB.readableComponents.includes(comp)) {
+                                        conflictItem = `component '${comp}'`;
+                                        isConflict = true;
+                                        break;
+                                    }
                                 }
                             }
-                        }
+                            if (!isConflict) {
+                                for (const comp of metaB.mutableComponents) {
+                                    if (metaA.readableComponents.includes(comp)) {
+                                        conflictItem = `component '${comp}'`;
+                                        isConflict = true;
+                                        break;
+                                    }
+                                }
+                            }
 
-                        if (isConflict) {
-                            // 检测是否显式声明了先后执行顺序
-                            const isOrdered = 
-                                metaA.runsAfter.includes(sysB.name) || 
-                                metaA.runsBefore.includes(sysB.name) ||
-                                metaB.runsAfter.includes(sysA.name) || 
-                                metaB.runsBefore.includes(sysA.name) ||
-                                metaA.runsAfter.some(set => metaB.belongsToSets.includes(set)) ||
-                                metaA.runsBefore.some(set => metaB.belongsToSets.includes(set)) ||
-                                metaB.runsAfter.some(set => metaA.belongsToSets.includes(set)) ||
-                                metaB.runsBefore.some(set => metaA.belongsToSets.includes(set));
+                            if (isConflict) {
+                                // 检测是否显式声明了先后执行顺序
+                                const isOrdered = 
+                                    metaA.runsAfter.includes(sysB.name) || 
+                                    metaA.runsBefore.includes(sysB.name) ||
+                                    metaB.runsAfter.includes(sysA.name) || 
+                                    metaB.runsBefore.includes(sysA.name) ||
+                                    metaA.runsAfter.some(set => metaB.belongsToSets.includes(set)) ||
+                                    metaA.runsBefore.some(set => metaB.belongsToSets.includes(set)) ||
+                                    metaB.runsAfter.some(set => metaA.belongsToSets.includes(set)) ||
+                                    metaB.runsBefore.some(set => metaA.belongsToSets.includes(set));
 
-                            if (!isOrdered) {
-                                const message = `Potential System Conflict: '${sysA.name}' and '${sysB.name}' both access ${conflictItem} (at least one is mutable) in the '${metaA.schedulePhase}' schedule, but have no defined execution order. This can cause one-frame latency or race conditions.`;
-                                
-                                const diagRangeA = new vscode.Range(new vscode.Position(sysA.line - 1, 0), new vscode.Position(sysA.line - 1, 80));
-                                const diagA = new vscode.Diagnostic(diagRangeA, message, vscode.DiagnosticSeverity.Warning);
-                                diagA.source = 'Bevy Lens';
-                                if (!diagnosticsMap.has(sysA.filePath)) diagnosticsMap.set(sysA.filePath, []);
-                                diagnosticsMap.get(sysA.filePath)!.push(diagA);
+                                if (!isOrdered) {
+                                    const message = `Potential System Conflict: '${sysA.name}' and '${sysB.name}' both access ${conflictItem} (at least one is mutable) in the '${metaA.schedulePhase}' schedule, but have no defined execution order. This can cause one-frame latency or race conditions.`;
+                                    
+                                    const diagRangeA = new vscode.Range(new vscode.Position(sysA.line - 1, 0), new vscode.Position(sysA.line - 1, 80));
+                                    const diagA = new vscode.Diagnostic(diagRangeA, message, vscode.DiagnosticSeverity.Warning);
+                                    diagA.source = 'Bevy Lens';
+                                    if (!diagnosticsMap.has(sysA.filePath)) diagnosticsMap.set(sysA.filePath, []);
+                                    diagnosticsMap.get(sysA.filePath)!.push(diagA);
 
-                                const diagRangeB = new vscode.Range(new vscode.Position(sysB.line - 1, 0), new vscode.Position(sysB.line - 1, 80));
-                                const diagB = new vscode.Diagnostic(diagRangeB, message, vscode.DiagnosticSeverity.Warning);
-                                diagB.source = 'Bevy Lens';
-                                if (!diagnosticsMap.has(sysB.filePath)) diagnosticsMap.set(sysB.filePath, []);
-                                diagnosticsMap.get(sysB.filePath)!.push(diagB);
+                                    const diagRangeB = new vscode.Range(new vscode.Position(sysB.line - 1, 0), new vscode.Position(sysB.line - 1, 80));
+                                    const diagB = new vscode.Diagnostic(diagRangeB, message, vscode.DiagnosticSeverity.Warning);
+                                    diagB.source = 'Bevy Lens';
+                                    if (!diagnosticsMap.has(sysB.filePath)) diagnosticsMap.set(sysB.filePath, []);
+                                    diagnosticsMap.get(sysB.filePath)!.push(diagB);
+                                }
                             }
                         }
                     }
@@ -165,9 +174,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 for (const [filePath, diags] of diagnosticsMap.entries()) {
                     conflictDiagnostics.set(vscode.Uri.file(filePath), diags);
                 }
-            }
-
-            // 更新全局注册表数据
+            }            // 更新全局注册表数据
             globalRegistryProvider.updateData(elements);
 
             // 更新 Bevy 语义目录树数据

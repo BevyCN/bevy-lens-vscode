@@ -39,10 +39,24 @@ export class BevyParser {
     public static async parseWorkspace(workspaceFolders: readonly vscode.WorkspaceFolder[]): Promise<BevyElement[]> {
         const elements: BevyElement[] = [];
 
-        for (const folder of workspaceFolders) {
-            const rootPath = folder.uri.fsPath;
-            await this.scanDir(rootPath, rootPath, elements);
-        }
+        // 使用 VS Code 优化的 findFiles API，忽略 target, .git, node_modules 等目录
+        const filesUris = await vscode.workspace.findFiles(
+            '{**/*.rs,**/*.wgsl,**/*.wesl}',
+            '{**/target/**,**/.git/**,**/node_modules/**}'
+        );
+
+        // 异步并行读取并解析文件
+        const parsePromises = filesUris.map(async (uri) => {
+            const filePath = uri.fsPath;
+            const ext = path.extname(filePath);
+            if (ext === '.rs') {
+                await this.parseRustFileAsync(filePath, elements);
+            } else if (ext === '.wgsl' || ext === '.wesl') {
+                await this.parseShaderFileAsync(filePath, elements);
+            }
+        });
+
+        await Promise.all(parsePromises);
 
         // 辅助缓存：目录 -> crateName
         const crateCache = new Map<string, string>();
@@ -82,18 +96,12 @@ export class BevyParser {
             
             const examplesIndex = parts.indexOf('examples');
             if (examplesIndex !== -1 && examplesIndex < parts.length - 1) {
-                // 可能是 examples/xxx.rs 
-                // 或者是 examples/group/xxx.rs
-                // 或者是 examples/group/xxx/main.rs
-                // 我们把 examples 之后直到具体文件的剩余路径路径拼接出来
                 const subParts = parts.slice(examplesIndex + 1);
                 
-                // 去除尾部的 main.rs
                 if (subParts.length > 1 && subParts[subParts.length - 1] === 'main.rs') {
                     subParts.pop();
                 }
                 
-                // 去除最后一个元素的 .rs 后缀
                 if (subParts.length > 0) {
                     const lastIdx = subParts.length - 1;
                     if (subParts[lastIdx].endsWith('.rs')) {
@@ -101,7 +109,6 @@ export class BevyParser {
                     }
                 }
                 
-                // 用 '/' 拼接起来作为精细划分的例子程序名称
                 const exampleName = subParts.join('/');
                 return { type: 'example', name: exampleName };
             }
@@ -133,16 +140,18 @@ export class BevyParser {
 
         // 全局后处理步骤：分析跨文件的 add_systems 调度配置
         const allFiles = Array.from(new Set(elements.map(e => e.filePath)));
-        for (const filePath of allFiles) {
-            if (path.extname(filePath) !== '.rs') continue;
+        const globalSystems = elements.filter(e => (e.type === 'System' || e.type === 'TestSystem'));
+        
+        const readPromises = allFiles.map(async (filePath) => {
+            if (path.extname(filePath) !== '.rs') return;
             try {
-                const content = fs.readFileSync(filePath, 'utf8');
+                const content = await fs.promises.readFile(filePath, 'utf8');
                 const addSystemsRegex = /\.add_systems\(\s*([A-Za-z0-9_:]+)\s*,\s*([^;]+?)\)/g;
                 let scheduleMatch: RegExpExecArray | null;
                 while ((scheduleMatch = addSystemsRegex.exec(content)) !== null) {
                     const phase = scheduleMatch[1];
                     const chainText = scheduleMatch[2];
-                    const globalSystems = elements.filter(e => (e.type === 'System' || e.type === 'TestSystem'));
+                    
                     for (const system of globalSystems) {
                         if (chainText.includes(system.name) && system.systemMetadata) {
                             system.systemMetadata.schedulePhase = phase;
@@ -161,52 +170,19 @@ export class BevyParser {
             } catch (err) {
                 console.error('Failed to perform global link step for file:', filePath, err);
             }
-        }
+        });
+        await Promise.all(readPromises);
 
         return elements;
-    }
-
-    private static async scanDir(dir: string, rootPath: string, elements: BevyElement[]): Promise<void> {
-        if (dir.includes('target') || dir.includes('.git') || dir.includes('node_modules')) {
-            return;
-        }
-
-        let files: string[];
-        try {
-            files = fs.readdirSync(dir);
-        } catch {
-            return;
-        }
-
-        for (const file of files) {
-            const fullPath = path.join(dir, file);
-            let stat: fs.Stats;
-            try {
-                stat = fs.statSync(fullPath);
-            } catch {
-                continue;
-            }
-
-            if (stat.isDirectory()) {
-                await this.scanDir(fullPath, rootPath, elements);
-            } else if (stat.isFile()) {
-                const ext = path.extname(file);
-                if (ext === '.rs') {
-                    this.parseRustFile(fullPath, elements);
-                } else if (ext === '.wgsl' || ext === '.wesl') {
-                    this.parseShaderFile(fullPath, elements);
-                }
-            }
-        }
     }
 
     /**
      * 解析 Rust 文件，分析 Bevy 特有语法
      */
-    private static parseRustFile(filePath: string, elements: BevyElement[]): void {
+    private static async parseRustFileAsync(filePath: string, elements: BevyElement[]): Promise<void> {
         let content = '';
         try {
-            content = fs.readFileSync(filePath, 'utf8');
+            content = await fs.promises.readFile(filePath, 'utf8');
         } catch {
             return;
         }
@@ -297,7 +273,7 @@ export class BevyParser {
                         let bindGroupMetadata: BevyElement['bindGroupMetadata'] | undefined;
                         if (derives.includes('AsBindGroup')) {
                             const bindings: { binding: number; type: 'uniform' | 'texture' | 'sampler'; name: string }[] = [];
-                            // 扫描内部成员的注解
+                            // 扫描内部成员 of struct
                             for (let k = nextStructLine + 1; k < Math.min(lines.length, nextStructLine + 30); k++) {
                                 const fieldLine = lines[k].trim();
                                 if (fieldLine.includes('}')) break;
@@ -480,10 +456,10 @@ export class BevyParser {
     /**
      * 解析 WGSL 着色器文件，分析 Uniform @binding 绑定关系
      */
-    private static parseShaderFile(filePath: string, elements: BevyElement[]): void {
+    private static async parseShaderFileAsync(filePath: string, elements: BevyElement[]): Promise<void> {
         let content = '';
         try {
-            content = fs.readFileSync(filePath, 'utf8');
+            content = await fs.promises.readFile(filePath, 'utf8');
         } catch {
             return;
         }
@@ -516,10 +492,7 @@ export class BevyParser {
                 bindings.push({ binding: parseInt(bindingMatch[1]), type: bindingType, name: bindingMatch[2] });
             }
 
-            // 识别顶点、片元、计算着色器入口点
-            // 例如：@vertex fn vs_main(...) 或 @compute @workgroup_size(8, 8, 1) fn init(...)
             if (line.includes('fn ')) {
-                // 向上寻找装饰器属性，检测最近 3 行以匹配多行装饰器的情形
                 let decorators = '';
                 for (let k = Math.max(0, i - 3); k <= i; k++) {
                     decorators += ' ' + lines[k].trim();
@@ -554,7 +527,6 @@ export class BevyParser {
             }
         }
 
-        // 动态追加入口点信息到 docstring
         let finalDocstring = docstring || `WGSL shader asset located at ${fileName}.`;
         if (entryPoints.length > 0) {
             finalDocstring += `\n\n### 🚀 Entry Points\n`;

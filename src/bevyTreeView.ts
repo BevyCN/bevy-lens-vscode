@@ -146,11 +146,28 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     private includesKeywords: string[] = [];
     private excludesKeywords: string[] = [];
 
+    // 缓存全局文件的诊断结果，避免 TreeItem 每次渲染时发起 IPC 调用 vscode.languages.getDiagnostics
+    private diagnosticsCache: Map<string, vscode.Diagnostic[]> = new Map();
+
     constructor(private readonly context: vscode.ExtensionContext) {}
 
     public updateData(elements: BevyElement[]) {
         this.elements = elements;
+        this.rebuildDiagnosticsCache();
         this.refresh();
+    }
+
+    // 重新构建文件编译诊断缓存
+    private rebuildDiagnosticsCache() {
+        this.diagnosticsCache.clear();
+        const files = new Set(this.elements.map(e => e.filePath));
+        for (const filePath of files) {
+            const uri = vscode.Uri.file(filePath);
+            const diags = vscode.languages.getDiagnostics(uri);
+            if (diags && diags.length > 0) {
+                this.diagnosticsCache.set(filePath, diags);
+            }
+        }
     }
 
     public setSearchFilter(filter: string) {
@@ -172,6 +189,8 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     }
 
     public refresh(): void {
+        // 在强制刷新时也同步更新一次诊断缓存
+        this.rebuildDiagnosticsCache();
         this._onDidChangeTreeData.fire();
     }
 
@@ -211,9 +230,8 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             }
             return item;
         } else {
-            // 检查全局注册表中的元素其所在文件是否有编译错误
-            const fileUri = vscode.Uri.file(element.filePath);
-            const diagnostics = vscode.languages.getDiagnostics(fileUri);
+            // 使用缓存的诊断结果进行 O(1) 过滤，极速渲染
+            const diagnostics = this.diagnosticsCache.get(element.filePath) || [];
             
             // 精准判定该元素所在行附近是否存在语法错误
             const lineIndex = element.line - 1;
@@ -244,6 +262,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             item.contextValue = 'bevyElement';
 
             // 点击命令：定位至代码行
+            const fileUri = vscode.Uri.file(element.filePath);
             item.command = {
                 command: 'vscode.open',
                 title: 'Open File',
@@ -440,16 +459,33 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
     private workspaceRoot: string = '';
     private nodeMap: Map<string, ExplorerNode> = new Map(); // 用于实现 getParent
 
+    // 缓存全局文件的诊断结果，避免 TreeItem 每次渲染时发起 IPC 调用 vscode.languages.getDiagnostics
+    private diagnosticsCache: Map<string, vscode.Diagnostic[]> = new Map();
+
     constructor(private readonly context: vscode.ExtensionContext) {}
 
     public updateData(elements: BevyElement[], workspaceRoot: string) {
         this.elements = elements;
         this.workspaceRoot = workspaceRoot;
         this.nodeMap.clear();
+        this.rebuildDiagnosticsCache();
         this.refresh();
     }
 
+    private rebuildDiagnosticsCache() {
+        this.diagnosticsCache.clear();
+        const files = new Set(this.elements.map(e => e.filePath));
+        for (const filePath of files) {
+            const uri = vscode.Uri.file(filePath);
+            const diags = vscode.languages.getDiagnostics(uri);
+            if (diags && diags.length > 0) {
+                this.diagnosticsCache.set(filePath, diags);
+            }
+        }
+    }
+
     public refresh(): void {
+        this.rebuildDiagnosticsCache();
         this._onDidChangeTreeData.fire();
     }
 
@@ -457,7 +493,6 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
     public findFileNode(filePath: string): ExplorerNode | undefined {
         let node = this.nodeMap.get(filePath);
         if (!node) {
-            // 如果缓存中暂时没有，为了能成功 reveal，主动动态构建节点树缓存
             const ext = path.extname(filePath);
             if (ext === '.rs' || ext === '.wgsl' || ext === '.wesl') {
                 node = new ExplorerNode(filePath, path.basename(filePath), 'file', filePath);
@@ -483,15 +518,10 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         if (node.kind === 'directory') {
             item.contextValue = 'directory';
             item.resourceUri = vscode.Uri.file(node.fsPath);
-            // 目录依然使用 VS Code 自动配的文件夹图标
         } else if (node.kind === 'file') {
             item.contextValue = 'file';
             item.resourceUri = vscode.Uri.file(node.fsPath);
 
-            // ✨【关键修复】✨
-            // 因为本文件节点是可折叠结构 (Collapsed)，VS Code 默认强制展示为文件夹图标。
-            // 我们通过直接为 item.iconPath 赋值我们在 resources/ 中打包的 Rust/WGSL 专属 SVG 图标路径，
-            // 成功覆盖掉 VS Code 文件夹图标的强制设定，让它既能展开，又显示为正确的 Rust 螃蟹图标！
             const ext = path.extname(node.fsPath);
             if (ext === '.rs') {
                 item.iconPath = vscode.Uri.file(path.join(this.context.extensionPath, 'resources', 'rust.svg'));
@@ -499,9 +529,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 item.iconPath = vscode.Uri.file(path.join(this.context.extensionPath, 'resources', 'wgsl.svg'));
             }
 
-            // 读取 rust-analyzer 的诊断报错情况
-            const fileUri = vscode.Uri.file(node.fsPath);
-            const diagnostics = vscode.languages.getDiagnostics(fileUri);
+            // 使用缓存的诊断结果 O(1) 取值
+            const diagnostics = this.diagnosticsCache.get(node.fsPath) || [];
             const errors = diagnostics.filter(d => d.severity === vscode.DiagnosticSeverity.Error);
             const warnings = diagnostics.filter(d => d.severity === vscode.DiagnosticSeverity.Warning);
 
@@ -545,6 +574,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             item.tooltip = markdown;
 
             // 让文件本身支持点击命令直接打开
+            const fileUri = vscode.Uri.file(node.fsPath);
             item.command = {
                 command: 'vscode.open',
                 title: 'Open File',
@@ -554,7 +584,9 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         } else if (node.kind === 'element' && node.elementData) {
             const el = node.elementData;
             const fileUri = vscode.Uri.file(el.filePath);
-            const diagnostics = vscode.languages.getDiagnostics(fileUri);
+            
+            // 使用缓存的诊断结果 O(1) 过滤
+            const diagnostics = this.diagnosticsCache.get(el.filePath) || [];
             
             // 检查具体这一行是否有 Diagnostics
             const lineIndex = el.line - 1;
@@ -580,7 +612,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             // 借助辅助函数构建精美的富文本 Markdown 悬停提示
             item.tooltip = buildElementTooltip(el, [...elementErrors, ...elementWarnings]);
 
-            // 图标与 tag (对于叶子节点元素，不需要图标主题，仍用 Bevy 语义专属彩标)
+            // 图标与 tag
             item.iconPath = this.getElementIcon(el.type);
             item.contextValue = 'bevyElement';
 
@@ -605,7 +637,6 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     getParent(node: ExplorerNode): vscode.ProviderResult<ExplorerNode> {
         if (node.kind === 'element') {
-            // 恢复真实的父子结构：元素的父节点是它所属的文件节点！
             let parentNode = this.nodeMap.get(node.fsPath);
             if (!parentNode) {
                 parentNode = new ExplorerNode(node.fsPath, path.basename(node.fsPath), 'file', node.fsPath);
@@ -613,7 +644,6 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             }
             return parentNode;
         } else {
-            // 文件/文件夹的父节点是其父级物理目录
             const parentDir = path.dirname(node.fsPath);
             if (parentDir.startsWith(this.workspaceRoot) && parentDir !== this.workspaceRoot) {
                 let parentNode = this.nodeMap.get(parentDir);
@@ -634,24 +664,20 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
         const currentPath = node ? node.fsPath : this.workspaceRoot;
 
-        // 如果节点是 element，没有子节点
         if (node && node.kind === 'element') {
             return [];
         }
 
-        // 如果节点是 file，返回该文件下的 Bevy 元素子节点（重新回归折叠树状层级！）
         if (node && node.kind === 'file') {
             const fileElements = this.elements.filter(e => e.filePath === currentPath);
             return fileElements.map(el => {
                 const key = `${el.filePath}:${el.name}:${el.type}`;
-                // 恢复默认的名称，不需要空格缩进了（因为现在是标准的展开结构了）
                 const elNode = new ExplorerNode(key, el.name, 'element', el.filePath, el);
                 this.nodeMap.set(key, elNode);
                 return elNode;
             });
         }
 
-        // 否则当前节点是目录，读取物理目录下的子目录和子文件
         let items: string[] = [];
         try {
             items = fs.readdirSync(currentPath);
@@ -686,7 +712,6 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             }
         }
 
-        // 排序：目录在前，文件在后
         dirs.sort((a, b) => a.label.localeCompare(b.label));
         files.sort((a, b) => a.label.localeCompare(b.label));
 

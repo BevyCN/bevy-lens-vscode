@@ -24,7 +24,7 @@
         {
           "id": "bevy-lens-sidebar",
           "title": "Bevy Lens",
-          "icon": "$(hubot)"
+          "icon": "$(eye)"
         }
       ]
     },

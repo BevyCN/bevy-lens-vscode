@@ -12,7 +12,8 @@
     "url": "https://github.com/hailalu/bevydevplugin"
   },
   "categories": [
-    "Other"
+    "Visualization",
+    "Linters"
   ],
   "icon": "resources/icon.png",
   "activationEvents": [

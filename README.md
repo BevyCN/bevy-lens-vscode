@@ -60,6 +60,10 @@ This extension contributes the following settings:
 
 ## 📅 Release Notes
 
+### 0.1.12
+*   Added **Change Sort Order...** command to the Global Registry title bar, allowing sorting Bevy elements alphabetically (A-Z) or by their file position.
+*   Introduced `bevyLens.sortBy` configuration.
+
 ### 0.1.11
 *   Fixed active editor synchronization highlight to correctly render the native focus selection background in Bevy Semantic Explorer.
 

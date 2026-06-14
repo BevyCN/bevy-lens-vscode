@@ -216,6 +216,28 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(resetSearchCmd);
 
+    // 切换排序方式命令
+    const changeSortOrderCmd = vscode.commands.registerCommand('bevy-lens.changeSortOrder', async () => {
+        const options = [
+            { label: 'Alphabetical', description: 'Sort elements alphabetically by name (A-Z)', value: 'alphabetical' },
+            { label: 'File Position', description: 'Sort elements by their line position in the source file', value: 'position' }
+        ];
+
+        const selected = await vscode.window.showQuickPick(options, {
+            placeHolder: 'Select registry elements sort order'
+        });
+
+        if (selected) {
+            const config = vscode.workspace.getConfiguration('bevyLens');
+            await config.update('sortBy', selected.value, vscode.ConfigurationTarget.Global);
+            // 刷新 TreeViews 以应用新的排序方式
+            globalRegistryProvider.refresh();
+            semanticExplorerProvider.refresh();
+            vscode.window.showInformationMessage(`Bevy Lens: Sorted by ${selected.label.toLowerCase()}`);
+        }
+    });
+    context.subscriptions.push(changeSortOrderCmd);
+
     // 5. 监听文件系统变动（自动增量重载）
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{rs,wgsl,wesl}');
     fileWatcher.onDidChange(async () => await refreshData());

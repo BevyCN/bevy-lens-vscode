@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -88,6 +88,11 @@
       {
         "command": "bevy-lens.explorer.reveal",
         "title": "Reveal in Explorer View"
+      },
+      {
+        "command": "bevy-lens.changeSortOrder",
+        "title": "Change Sort Order...",
+        "icon": "$(sort-precedence)"
       }
     ],
     "menus": {
@@ -101,6 +106,11 @@
           "command": "bevy-lens.resetSearch",
           "when": "view == bevyGlobalRegistry",
           "group": "navigation@1.5"
+        },
+        {
+          "command": "bevy-lens.changeSortOrder",
+          "when": "view == bevyGlobalRegistry",
+          "group": "navigation@1.8"
         },
         {
           "command": "bevy-lens.explorer.newFile",
@@ -171,6 +181,19 @@
           "type": "boolean",
           "default": false,
           "description": "Enable static query read/write conflict warnings for parallel systems."
+        },
+        "bevyLens.sortBy": {
+          "type": "string",
+          "default": "alphabetical",
+          "enum": [
+            "alphabetical",
+            "position"
+          ],
+          "enumDescriptions": [
+            "Sort elements alphabetically by name (A-Z)",
+            "Sort elements by their line position in the source file"
+          ],
+          "description": "Specify how Bevy registry elements should be sorted in the tree views."
         }
       }
     }

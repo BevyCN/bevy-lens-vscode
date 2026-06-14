@@ -373,7 +373,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     }
 
     private getFilteredElementsByType(type: BevyElement['type']): BevyElement[] {
-        return this.elements.filter(e => {
+        const filtered = this.elements.filter(e => {
             if (type === 'TestComponent') {
                 // 汇总测试 ECS 概念
                 if (e.type !== 'TestComponent' && e.type !== 'TestResource' && e.type !== 'TestBundle' && e.type !== 'TestSystemParam') {
@@ -408,6 +408,22 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             }
             return true;
         });
+
+        // 读取排序配置进行排序
+        const config = vscode.workspace.getConfiguration('bevyLens');
+        const sortBy = config.get<string>('sortBy', 'alphabetical');
+
+        if (sortBy === 'alphabetical') {
+            return filtered.sort((a, b) => a.name.localeCompare(b.name));
+        } else {
+            // 按行号/文件位置顺序排列
+            return filtered.sort((a, b) => {
+                if (a.filePath !== b.filePath) {
+                    return a.filePath.localeCompare(b.filePath);
+                }
+                return a.line - b.line;
+            });
+        }
     }
 
     private getElementIcon(type: BevyElement['type']): vscode.ThemeIcon {

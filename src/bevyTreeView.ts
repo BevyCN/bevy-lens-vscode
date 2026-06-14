@@ -295,32 +295,19 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
         if (element instanceof CrateCategory) {
             const items = this.getFilteredElementsByTypeAndCrate(element.parentCategory.type, element.crateName);
             
-            // 获取该 Crate 下的所有 examples 以及 bins，以便在 Crate 下划分层级
             const hasExamples = items.some(e => e.sourceTarget?.type === 'example');
             const hasBins = items.some(e => e.sourceTarget?.type === 'bin');
             
             const nodes: RegistryNode[] = [];
             
-            // 1. examples 放到 Examples 汇总节点下
+            // 1. examples 放到 "Examples" 汇总分组节点下，而不是直接平铺
             if (hasExamples) {
-                const exampleNames = Array.from(new Set(
-                    items.filter(e => e.sourceTarget?.type === 'example').map(e => e.sourceTarget?.name || 'unknown')
-                )).sort();
-                
-                // 每一个具体的 example 为一个节点
-                exampleNames.forEach(name => {
-                    nodes.push(new TargetCategory(`Example: ${name}`, 'example', element, name));
-                });
+                nodes.push(new TargetCategory("Examples", 'example', element));
             }
             
-            // 2. bins 放到 Bins 汇总节点下
+            // 2. bins 放到 "Bins" 汇总分组节点下，而不是直接平铺
             if (hasBins) {
-                const binNames = Array.from(new Set(
-                    items.filter(e => e.sourceTarget?.type === 'bin').map(e => e.sourceTarget?.name || 'unknown')
-                )).sort();
-                binNames.forEach(name => {
-                    nodes.push(new TargetCategory(`Bin: ${name}`, 'bin', element, name));
-                });
+                nodes.push(new TargetCategory("Bins", 'bin', element));
             }
             
             // 3. 不属于 examples 和 bins 的系统直接放在 Crate 下展示 (lib 类型)
@@ -331,7 +318,22 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
         }
 
         if (element instanceof TargetCategory) {
-            return this.getFilteredElementsByTarget(element);
+            // 如果 specificName 不存在，说明是 "Examples" 或 "Bins" 总节点，应当列出所有的具体例子/命令名
+            if (!element.specificName) {
+                const items = this.getFilteredElementsByTypeAndCrate(element.parentCrate.parentCategory.type, element.parentCrate.crateName);
+                const filtered = items.filter(e => e.sourceTarget?.type === element.targetType);
+                const specificNames = Array.from(new Set(
+                    filtered.map(e => e.sourceTarget?.name || 'unknown')
+                )).sort();
+                
+                return specificNames.map(name => {
+                    const label = element.targetType === 'example' ? `Example: ${name}` : `Bin: ${name}`;
+                    return new TargetCategory(label, element.targetType, element.parentCrate, name);
+                });
+            } else {
+                // 如果已经有 specificName，说明已经是具体例子（如 Example: ui/button），则展示其下面的具体 bevy 元素列表
+                return this.getFilteredElementsByTarget(element);
+            }
         }
 
         return [];

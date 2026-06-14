@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.4",
+  "version": "0.1.10",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -60,6 +60,34 @@
         "command": "bevy-lens.resetSearch",
         "title": "Clear Search Filter",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "bevy-lens.explorer.newFile",
+        "title": "New File",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "bevy-lens.explorer.newFileFromTemplate",
+        "title": "New File from Template...",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "bevy-lens.explorer.newFolder",
+        "title": "New Folder",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "bevy-lens.explorer.rename",
+        "title": "Rename..."
+      },
+      {
+        "command": "bevy-lens.explorer.delete",
+        "title": "Delete",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "bevy-lens.explorer.reveal",
+        "title": "Reveal in Explorer View"
       }
     ],
     "menus": {
@@ -75,9 +103,56 @@
           "group": "navigation@1.5"
         },
         {
+          "command": "bevy-lens.explorer.newFile",
+          "when": "view == bevySemanticExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "bevy-lens.explorer.newFileFromTemplate",
+          "when": "view == bevySemanticExplorer",
+          "group": "navigation@1.5"
+        },
+        {
+          "command": "bevy-lens.explorer.newFolder",
+          "when": "view == bevySemanticExplorer",
+          "group": "navigation@2"
+        },
+        {
           "command": "bevy-lens.refresh",
           "when": "view == bevyGlobalRegistry || view == bevySemanticExplorer",
-          "group": "navigation@2"
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "bevy-lens.explorer.newFile",
+          "when": "view == bevySemanticExplorer && viewItem == directory",
+          "group": "1_new@1"
+        },
+        {
+          "command": "bevy-lens.explorer.newFileFromTemplate",
+          "when": "view == bevySemanticExplorer && viewItem == directory",
+          "group": "1_new@2"
+        },
+        {
+          "command": "bevy-lens.explorer.newFolder",
+          "when": "view == bevySemanticExplorer && viewItem == directory",
+          "group": "1_new@3"
+        },
+        {
+          "command": "bevy-lens.explorer.rename",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
+          "group": "2_modify"
+        },
+        {
+          "command": "bevy-lens.explorer.delete",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
+          "group": "3_delete"
+        },
+        {
+          "command": "bevy-lens.explorer.reveal",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
+          "group": "4_reveal"
         }
       ]
     },
@@ -86,7 +161,10 @@
       "properties": {
         "bevyLens.excludePaths": {
           "type": "array",
-          "default": ["**/target/**", "**/.git/**"],
+          "default": [
+            "**/target/**",
+            "**/.git/**"
+          ],
           "description": "Paths to exclude when scanning for Bevy assets."
         },
         "bevyLens.enableConflictDiagnostics": {

@@ -60,6 +60,12 @@ This extension contributes the following settings:
 
 ## 📅 Release Notes
 
+### 0.1.10
+*   Added **New File from Template...** command with 4 built-in Bevy templates (Plugin, System, ECS Types, WGSL Shader).
+*   Optimized file tree nodes to utilize VS Code's active **File Icon Theme** natively.
+*   Fixed a WSL/remote development bug where `Reveal in Explorer View` context menu command failed.
+*   Significantly optimized workspace file traversal and TreeView diagnostics caching performance.
+
 ### 0.1.2
 *   Support for cargo multi-crate workspaces.
 *   Intelligent nested grouping for examples (`examples/`) and binaries (`src/bin/`), resolving down to individual files and folders.

@@ -73,6 +73,7 @@ export async function activate(context: vscode.ExtensionContext) {
             // 读取配置，如果用户启用了并发诊断才执行检测逻辑
             const config = vscode.workspace.getConfiguration('bevyLens');
             const enableConflictDiagnostics = config.get<boolean>('enableConflictDiagnostics', false);
+
             if (enableConflictDiagnostics) {
                 // 检测系统并发读写冲突（一帧延迟问题）
                 const systems = elements.filter(e => e.type === 'System' && e.systemMetadata && e.systemMetadata.schedulePhase);
@@ -174,7 +175,9 @@ export async function activate(context: vscode.ExtensionContext) {
                 for (const [filePath, diags] of diagnosticsMap.entries()) {
                     conflictDiagnostics.set(vscode.Uri.file(filePath), diags);
                 }
-            }            // 更新全局注册表数据
+            }
+
+            // 更新全局注册表数据
             globalRegistryProvider.updateData(elements);
 
             // 更新 Bevy 语义目录树数据
@@ -224,12 +227,19 @@ export async function activate(context: vscode.ExtensionContext) {
     const activeEditorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
         if (!editor) { return; }
         
+        // 只有当 Bevy 语义视图当前被用户激活且可见时，才执行 reveal。
+        // 如果 visible 为 false 证明用户没有在看这个插件视图，绝对不进行 reveal 破坏用户当前排版
+        if (!explorerTreeView.visible) {
+            return;
+        }
+
         const filePath = editor.document.uri.fsPath;
         const fileNode = semanticExplorerProvider.findFileNode(filePath);
         
         if (fileNode) {
+            // 通过 select: false 和 focus: false 可以极大地避免由于 reveal 动作抢占当前活动窗口焦点的问题
             explorerTreeView.reveal(fileNode, {
-                select: true,
+                select: false,
                 focus: false,
                 expand: true
             }).then(
@@ -247,6 +257,214 @@ export async function activate(context: vscode.ExtensionContext) {
         semanticExplorerProvider.refresh();
     });
     context.subscriptions.push(diagListener);
+
+    // 8. 注册资源管理器模拟命令
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const getTargetDirPath = (node: any): string => {
+        if (!node || !node.fsPath) {
+            return (workspaceFolders && workspaceFolders.length > 0) ? workspaceFolders[0].uri.fsPath : '';
+        }
+        if (node.kind === 'directory') {
+            return node.fsPath;
+        }
+        return path.dirname(node.fsPath);
+    };
+
+    // 新建文件
+    const newFileCmd = vscode.commands.registerCommand('bevy-lens.explorer.newFile', async (node?: any) => {
+        const targetDir = getTargetDirPath(node);
+        if (!targetDir) return;
+        const fileName = await vscode.window.showInputBox({
+            prompt: 'Enter the name of the new file',
+            placeHolder: 'e.g. plugin.rs, shader.wgsl'
+        });
+        if (!fileName) return;
+
+        const filePath = path.join(targetDir, fileName);
+        if (fs.existsSync(filePath)) {
+            vscode.window.showErrorMessage(`File already exists: ${fileName}`);
+            return;
+        }
+
+        try {
+            fs.writeFileSync(filePath, '', 'utf8');
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+            await vscode.window.showTextDocument(doc);
+            await refreshData();
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to create file: ${err.message}`);
+        }
+    });
+    context.subscriptions.push(newFileCmd);
+
+    // 新建模板文件
+    const newFileFromTemplateCmd = vscode.commands.registerCommand('bevy-lens.explorer.newFileFromTemplate', async (node?: any) => {
+        const targetDir = getTargetDirPath(node);
+        if (!targetDir) return;
+
+        // 1. Choose template
+        const templates = [
+            { label: 'Bevy Plugin', description: 'Module entry point implementing Plugin trait', ext: '.rs' },
+            { label: 'Bevy System', description: 'Function system parameter signature skeleton', ext: '.rs' },
+            { label: 'Bevy ECS Types', description: 'Boilerplate for Component, Resource, and Event', ext: '.rs' },
+            { label: 'WGSL Custom Shader', description: 'Fragment shader material template', ext: '.wgsl' }
+        ];
+
+        const selectedTemplate = await vscode.window.showQuickPick(templates, {
+            placeHolder: 'Select a Bevy template'
+        });
+        if (!selectedTemplate) return;
+
+        // 2. Enter filename/name
+        const nameInput = await vscode.window.showInputBox({
+            prompt: `Enter the name of the new ${selectedTemplate.label.toLowerCase()}`,
+            placeHolder: selectedTemplate.ext === '.wgsl' ? 'custom_material' : 'player_movement'
+        });
+        if (!nameInput) return;
+
+        // Clean names for replacement
+        // CamelCase Name e.g. "player_movement" -> "PlayerMovement"
+        const pascalCase = nameInput
+            .replace(/(?:^\w|[A-Z]|\b\w)/g, (word) => word.toUpperCase())
+            .replace(/\s+|_|-/g, '');
+        
+        // snake_case Name
+        const snakeCase = nameInput
+            .replace(/\s+|-/g, '_')
+            .toLowerCase();
+
+        // Target file name
+        const fileName = snakeCase.endsWith(selectedTemplate.ext) 
+            ? snakeCase 
+            : `${snakeCase}${selectedTemplate.ext}`;
+
+        const filePath = path.join(targetDir, fileName);
+        if (fs.existsSync(filePath)) {
+            vscode.window.showErrorMessage(`File already exists: ${fileName}`);
+            return;
+        }
+
+        // 3. Template code resolution
+        let fileContent = '';
+        if (selectedTemplate.label === 'Bevy Plugin') {
+            fileContent = `use bevy::prelude::*;\n\npub struct ${pascalCase}Plugin;\n\nimpl Plugin for ${pascalCase}Plugin {\n    fn build(&self, app: &mut App) {\n        // app.add_systems(Update, my_system);\n    }\n}\n`;
+        } else if (selectedTemplate.label === 'Bevy System') {
+            fileContent = `use bevy::prelude::*;\n\npub fn ${snakeCase}_system(\n    mut commands: Commands,\n    time: Res<Time>,\n) {\n    // system logic\n}\n`;
+        } else if (selectedTemplate.label === 'Bevy ECS Types') {
+            fileContent = `use bevy::prelude::*;\n\n#[derive(Component, Debug, Default, Reflect)]\n#[reflect(Component)]\npub struct ${pascalCase}Component {\n    // fields\n}\n\n#[derive(Resource, Debug, Default, Reflect)]\n#[reflect(Resource)]\npub struct ${pascalCase}Resource {\n    // fields\n}\n\n#[derive(Event, Debug)]\npub struct ${pascalCase}Event {\n    // fields\n}\n`;
+        } else if (selectedTemplate.label === 'WGSL Custom Shader') {
+            fileContent = `#import bevy_pbr::mesh_view_bindings::globals\n#import bevy_pbr::forward_io::VertexOutput\n\n@group(2) @binding(0) var<uniform> base_color: vec4<f32>;\n\n@fragment\nfn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n    return base_color;\n}\n`;
+        }
+
+        try {
+            fs.writeFileSync(filePath, fileContent, 'utf8');
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+            await vscode.window.showTextDocument(doc);
+            await refreshData();
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to create file: ${err.message}`);
+        }
+    });
+    context.subscriptions.push(newFileFromTemplateCmd);
+
+    // 新建文件夹
+    const newFolderCmd = vscode.commands.registerCommand('bevy-lens.explorer.newFolder', async (node?: any) => {
+        const targetDir = getTargetDirPath(node);
+        if (!targetDir) return;
+        const folderName = await vscode.window.showInputBox({
+            prompt: 'Enter the name of the new folder',
+            placeHolder: 'e.g. components, systems'
+        });
+        if (!folderName) return;
+
+        const folderPath = path.join(targetDir, folderName);
+        if (fs.existsSync(folderPath)) {
+            vscode.window.showErrorMessage(`Folder already exists: ${folderName}`);
+            return;
+        }
+
+        try {
+            fs.mkdirSync(folderPath, { recursive: true });
+            await refreshData();
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+        }
+    });
+    context.subscriptions.push(newFolderCmd);
+
+    // 重命名
+    const renameCmd = vscode.commands.registerCommand('bevy-lens.explorer.rename', async (node?: any) => {
+        if (!node || !node.fsPath) {
+            vscode.window.showErrorMessage('No file or folder selected to rename');
+            return;
+        }
+        const oldPath = node.fsPath;
+        const oldName = path.basename(oldPath);
+        const newName = await vscode.window.showInputBox({
+            prompt: `Rename '${oldName}'`,
+            value: oldName
+        });
+        if (!newName || newName === oldName) return;
+
+        const newPath = path.join(path.dirname(oldPath), newName);
+        if (fs.existsSync(newPath)) {
+            vscode.window.showErrorMessage(`A file or folder already exists at destination: ${newName}`);
+            return;
+        }
+
+        try {
+            fs.renameSync(oldPath, newPath);
+            await refreshData();
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to rename: ${err.message}`);
+        }
+    });
+    context.subscriptions.push(renameCmd);
+
+    // 删除
+    const deleteCmd = vscode.commands.registerCommand('bevy-lens.explorer.delete', async (node?: any) => {
+        if (!node || !node.fsPath) {
+            vscode.window.showErrorMessage('No file or folder selected to delete');
+            return;
+        }
+        const targetPath = node.fsPath;
+        const targetName = path.basename(targetPath);
+        const confirm = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete '${targetName}'?`,
+            { modal: true },
+            'Delete'
+        );
+        if (confirm !== 'Delete') return;
+
+        try {
+            const stat = fs.statSync(targetPath);
+            if (stat.isDirectory()) {
+                fs.rmSync(targetPath, { recursive: true, force: true });
+            } else {
+                fs.unlinkSync(targetPath);
+            }
+            await refreshData();
+        } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to delete: ${err.message}`);
+        }
+    });
+    context.subscriptions.push(deleteCmd);
+
+    // 定位到资源管理器
+    const revealCmd = vscode.commands.registerCommand('bevy-lens.explorer.reveal', async (node?: any) => {
+        if (!node || !node.fsPath) return;
+        
+        const fileUri = vscode.Uri.file(node.fsPath);
+        try {
+            // 使用 VS Code 平台内置的 revealInExplorer 命令，能完美兼容本地、WSL 及远程开发环境，
+            // 自动在左侧原生 File Explorer 中展开定位当前文件/文件夹。
+            await vscode.commands.executeCommand('revealInExplorer', fileUri);
+        } catch (err) {
+            // 回退到 revealFileInOS (在系统外壳管理器中打开)
+            vscode.commands.executeCommand('revealFileInOS', fileUri);
+        }
+    });
+    context.subscriptions.push(revealCmd);
 }
 
 export function deactivate() {}

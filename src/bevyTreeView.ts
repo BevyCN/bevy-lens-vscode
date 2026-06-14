@@ -522,12 +522,9 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             item.contextValue = 'file';
             item.resourceUri = vscode.Uri.file(node.fsPath);
 
-            const ext = path.extname(node.fsPath);
-            if (ext === '.rs') {
-                item.iconPath = vscode.Uri.file(path.join(this.context.extensionPath, 'resources', 'rust.svg'));
-            } else if (ext === '.wgsl' || ext === '.wesl') {
-                item.iconPath = vscode.Uri.file(path.join(this.context.extensionPath, 'resources', 'wgsl.svg'));
-            }
+            // 方案B：将 iconPath 设置为 vscode.ThemeIcon.File，由 VS Code 底层自动依据该节点的 resourceUri
+            // 的后缀（.rs, .wgsl, .wesl 等）从用户当前激活的“文件图标主题”中抓取对应图标。
+            item.iconPath = vscode.ThemeIcon.File;
 
             // 使用缓存的诊断结果 O(1) 取值
             const diagnostics = this.diagnosticsCache.get(node.fsPath) || [];

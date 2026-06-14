@@ -22,7 +22,7 @@ function buildElementTooltip(element: BevyElement, elementErrors: vscode.Diagnos
     }
 
     markdown.appendMarkdown(`### **${element.name}** \`[${element.type}]\`${errorTag}\n\n`);
-    markdown.appendMarkdown(`* **文件**: \`${path.basename(element.filePath)}\` (行 ${element.line})\n\n`);
+    markdown.appendMarkdown(`* **File**: \`${path.basename(element.filePath)}\` (Line ${element.line})\n\n`);
 
     // System 调度与访问分析展示
     if (element.type === 'System' && element.systemMetadata) {
@@ -30,33 +30,33 @@ function buildElementTooltip(element: BevyElement, elementErrors: vscode.Diagnos
         markdown.appendMarkdown(`---\n\n`);
         markdown.appendMarkdown(`#### ⚙️ **System Schedule & Bounds**\n`);
         if (meta.schedulePhase) {
-            markdown.appendMarkdown(`* **运行阶段 (Stage)**: \`${meta.schedulePhase}\`\n`);
+            markdown.appendMarkdown(`* **Stage**: \`${meta.schedulePhase}\`\n`);
         }
         if (meta.belongsToSets.length > 0) {
-            markdown.appendMarkdown(`* **属于系统集 (SystemSets)**: ${meta.belongsToSets.map(s => `\`${s}\``).join(', ')}\n`);
+            markdown.appendMarkdown(`* **SystemSets**: ${meta.belongsToSets.map(s => `\`${s}\``).join(', ')}\n`);
         }
         if (meta.runsAfter.length > 0) {
-            markdown.appendMarkdown(`* **在其后运行 (After)**: ${meta.runsAfter.map(s => `\`${s}\``).join(', ')}\n`);
+            markdown.appendMarkdown(`* **After**: ${meta.runsAfter.map(s => `\`${s}\``).join(', ')}\n`);
         }
         if (meta.runsBefore.length > 0) {
-            markdown.appendMarkdown(`* **在其前运行 (Before)**: ${meta.runsBefore.map(s => `\`${s}\``).join(', ')}\n`);
+            markdown.appendMarkdown(`* **Before**: ${meta.runsBefore.map(s => `\`${s}\``).join(', ')}\n`);
         }
         if (meta.runConditions.length > 0) {
-            markdown.appendMarkdown(`* **运行条件 (Run Conditions)**: \`${meta.runConditions.join(' && ')}\`\n`);
+            markdown.appendMarkdown(`* **Run Conditions**: \`${meta.runConditions.join(' && ')}\`\n`);
         }
 
-        markdown.appendMarkdown(`\n#### 📊 **数据访问签名 (Data Access)**\n`);
+        markdown.appendMarkdown(`\n#### 📊 **Data Access**\n`);
         if (meta.mutableResources.length > 0) {
-            markdown.appendMarkdown(`* **写资源 (Mut Res)**: ${meta.mutableResources.map(r => `\`${r}\``).join(', ')}\n`);
+            markdown.appendMarkdown(`* **Mut Res**: ${meta.mutableResources.map(r => `\`${r}\``).join(', ')}\n`);
         }
         if (meta.readableResources.length > 0) {
-            markdown.appendMarkdown(`* **读资源 (Res)**: ${meta.readableResources.map(r => `\`${r}\``).join(', ')}\n`);
+            markdown.appendMarkdown(`* **Res**: ${meta.readableResources.map(r => `\`${r}\``).join(', ')}\n`);
         }
         if (meta.mutableComponents.length > 0) {
-            markdown.appendMarkdown(`* **写组件 (Mut Comp)**: ${meta.mutableComponents.map(c => `\`${c}\``).join(', ')}\n`);
+            markdown.appendMarkdown(`* **Mut Comp**: ${meta.mutableComponents.map(c => `\`${c}\``).join(', ')}\n`);
         }
         if (meta.readableComponents.length > 0) {
-            markdown.appendMarkdown(`* **读组件 (Comp)**: ${meta.readableComponents.map(c => `\`${c}\``).join(', ')}\n`);
+            markdown.appendMarkdown(`* **Comp**: ${meta.readableComponents.map(c => `\`${c}\``).join(', ')}\n`);
         }
         markdown.appendMarkdown(`\n`);
     }
@@ -557,20 +557,20 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             const markdown = new vscode.MarkdownString();
             markdown.appendMarkdown(`### **${node.label}**\n\n`);
             if (errors.length > 0) {
-                markdown.appendMarkdown(`#### ❌ **语法错误 (${errors.length})**:\n`);
+                markdown.appendMarkdown(`#### ❌ **Syntax Errors (${errors.length})**:\n`);
                 errors.slice(0, 5).forEach(err => {
-                    markdown.appendMarkdown(`* [行 ${err.range.start.line + 1}]: \`${err.message.trim()}\`\n`);
+                    markdown.appendMarkdown(`* [Line ${err.range.start.line + 1}]: \`${err.message.trim()}\`\n`);
                 });
                 markdown.appendMarkdown(`\n---\n`);
             }
             if (warnings.length > 0) {
-                markdown.appendMarkdown(`#### ⚠️ **警告 (${warnings.length})**:\n`);
+                markdown.appendMarkdown(`#### ⚠️ **Warnings (${warnings.length})**:\n`);
                 warnings.slice(0, 5).forEach(warn => {
-                    markdown.appendMarkdown(`* [行 ${warn.range.start.line + 1}]: \`${warn.message.trim()}\`\n`);
+                    markdown.appendMarkdown(`* [Line ${warn.range.start.line + 1}]: \`${warn.message.trim()}\`\n`);
                 });
                 markdown.appendMarkdown(`\n---\n`);
             }
-            markdown.appendMarkdown(`* 物理路径: \`${node.fsPath}\``);
+            markdown.appendMarkdown(`* Path: \`${node.fsPath}\``);
             item.tooltip = markdown;
 
             // 让文件本身支持点击命令直接打开

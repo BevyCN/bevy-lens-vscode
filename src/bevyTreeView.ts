@@ -626,6 +626,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         if (node.kind === 'directory') {
             item.contextValue = 'directory';
             item.resourceUri = vscode.Uri.file(node.fsPath);
+            item.iconPath = vscode.ThemeIcon.Folder;
         } else if (node.kind === 'file') {
             item.contextValue = 'file';
             item.resourceUri = vscode.Uri.file(node.fsPath);
@@ -711,7 +712,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 statusTag = ' 🟡';
             }
 
-            item.label = node.label + statusTag;
+            item.label = `${node.label}${statusTag}`;
             item.description = el.description;
             
             // 借助辅助函数构建精美的富文本 Markdown 悬停提示
@@ -737,6 +738,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             };
         } else if (node.kind === 'shaderBinding' && node.bindingData && node.elementData) {
             const b = node.bindingData;
+            item.label = node.label;
             item.description = b.type;
             item.iconPath = new vscode.ThemeIcon('symbol-field', new vscode.ThemeColor('charts.blue'));
             item.contextValue = 'shaderBinding';

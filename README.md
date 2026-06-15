@@ -68,6 +68,9 @@ This extension contributes the following settings:
 
 ## 📅 Release Notes
 
+### 0.1.14
+*   Fixed TreeView item indentation alignment. Files containing no Bevy elements will correctly align their icons with other files in the Semantic Explorer.
+
 ### 0.1.13
 *   Added **ECS Schedule Visualizer** (`bevy-lens.openScheduleVisualizer` command and sidebar view button), allowing interactive DAG inspection of systems with drag-and-drop force-directed layouts.
 *   Implemented **Build Target Separation** to isolate system graphs and conflicts between different binaries, examples, and libraries.

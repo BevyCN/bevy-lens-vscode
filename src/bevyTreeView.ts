@@ -611,7 +611,10 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         if (node.kind === 'directory') {
             collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
         } else if (node.kind === 'file') {
-            collapsibleState = isBevyFile ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
+            // 只有当该文件是 Bevy 支持的格式，且文件内部确实解析到了 Bevy 元素时，才设置为 Collapsed。
+            // 否则（如普通文件或空 Rust 文件）设为 None。VS Code 遇到同级混合节点时会自动留空对齐。
+            const fileElements = isBevyFile ? this.elements.filter(e => e.filePath === node.fsPath) : [];
+            collapsibleState = fileElements.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
         } else if (node.kind === 'element' && node.elementData?.type === 'Shader') {
             const hasChildren = node.elementData.shaderMetadata &&
                 (node.elementData.shaderMetadata.bindings.length > 0 || node.elementData.shaderMetadata.entryPoints.length > 0);

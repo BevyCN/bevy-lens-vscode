@@ -40,6 +40,14 @@ An enhanced physical file explorer that reveals Bevy structures inline:
   <img src="images/popup.jpg" alt="Diagnostics and Rich Previews" width="600px">
 </p>
 
+### 4. 📊 ECS Schedule & Dataflow Visualizer (Schedule Visualizer)
+A static analysis tool that displays scheduling logic and data flow interactively:
+*   **Interactive DAG Layout**: Renders systems in a directed acyclic graph (DAG) using a beautiful force-directed layout, supporting smooth zooming, dragging, and physics animations.
+*   **Build Target Isolation**: Supports a target filter to isolate different `bin`, `example`, and `lib` systems to avoid false-positive warnings between independent executables.
+*   **Serial Chain Constraint Parser**: Parses Bevy system `.chain()` constraints, correctly chaining execution dependencies.
+*   **Data Race Ambiguity Warning**: Automatically highlights systems running concurrently (without order) that have read/write overlaps (Write-Write or Read-Write) on components/resources, styled in red and toggled with control switches.
+*   **Editor Sync Navigation**: Double-click any system node to instantly open the source file on the left editor column and scroll directly to its line number.
+
 ---
 
 ## ⚡ Requirements & Recommendations
@@ -59,6 +67,15 @@ This extension contributes the following settings:
 ---
 
 ## 📅 Release Notes
+
+### 0.1.13
+*   Added **ECS Schedule Visualizer** (`bevy-lens.openScheduleVisualizer` command and sidebar view button), allowing interactive DAG inspection of systems with drag-and-drop force-directed layouts.
+*   Implemented **Build Target Separation** to isolate system graphs and conflicts between different binaries, examples, and libraries.
+*   Added support for parsing Bevy system `.chain()` constraints, correctly serializing execution orders in the scheduler.
+*   Implemented **Static Data Race Warning & Highlighting** for concurrent read/write resource/component access in the graph view.
+*   Added switches to toggle potential race warnings, execution constraints, and select the active schedule phase/target.
+*   Double-clicking nodes in the webview now directly opens and highlights the system in the editor.
+*   Fixed WGSL `@binding` layout and entry points parser to support multi-line declarations.
 
 ### 0.1.12
 *   Added **Change Sort Order...** command to the Global Registry title bar, allowing sorting Bevy elements alphabetically (A-Z) or by their file position.

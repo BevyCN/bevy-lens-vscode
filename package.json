@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -93,6 +93,11 @@
         "command": "bevy-lens.changeSortOrder",
         "title": "Change Sort Order...",
         "icon": "$(sort-precedence)"
+      },
+      {
+        "command": "bevy-lens.openScheduleVisualizer",
+        "title": "Open Schedule Visualizer",
+        "icon": "$(graph)"
       }
     ],
     "menus": {
@@ -131,6 +136,11 @@
           "command": "bevy-lens.refresh",
           "when": "view == bevyGlobalRegistry || view == bevySemanticExplorer",
           "group": "navigation@3"
+        },
+        {
+          "command": "bevy-lens.openScheduleVisualizer",
+          "when": "view == bevyGlobalRegistry || view == bevySemanticExplorer",
+          "group": "navigation@2.5"
         }
       ],
       "view/item/context": [

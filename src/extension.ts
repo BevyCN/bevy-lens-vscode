@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { BevyParser } from './bevyParser';
+import { BevyParser, BevyElement } from './bevyParser';
 import { BevyGlobalRegistryProvider, BevySemanticExplorerProvider } from './bevyTreeView';
+import { ScheduleVisualizerPanel } from './scheduleVisualizer';
 
 function checkIsBevyProject(workspaceFolders: readonly vscode.WorkspaceFolder[]): boolean {
     for (const folder of workspaceFolders) {
@@ -23,6 +24,7 @@ function checkIsBevyProject(workspaceFolders: readonly vscode.WorkspaceFolder[])
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Bevy Lens extension is now active!');
+    let cachedElements: BevyElement[] = [];
 
     // 创建诊断集合，用于标记 System 并发读写冲突的黄色波浪线警告
     const conflictDiagnostics = vscode.languages.createDiagnosticCollection('bevy-lens');
@@ -66,6 +68,7 @@ export async function activate(context: vscode.ExtensionContext) {
             title: "Bevy Lens: Analyzing ECS elements..."
         }, async () => {
             const elements = await BevyParser.parseWorkspace(workspaceFolders);
+            cachedElements = elements;
             
             // 清除旧的冲突诊断
             conflictDiagnostics.clear();
@@ -183,6 +186,11 @@ export async function activate(context: vscode.ExtensionContext) {
             // 更新 Bevy 语义目录树数据
             const rootPath = workspaceFolders[0].uri.fsPath;
             semanticExplorerProvider.updateData(elements, rootPath);
+
+            // 如果可视化面板已打开，则同步更新数据
+            if (ScheduleVisualizerPanel.currentPanel) {
+                ScheduleVisualizerPanel.currentPanel.updateData(cachedElements);
+            }
         });
     };
 
@@ -190,6 +198,12 @@ export async function activate(context: vscode.ExtensionContext) {
     await refreshData();
 
     // 4. 注册命令
+    // 注册 ECS 调度可视化命令
+    const openVisualizerCmd = vscode.commands.registerCommand('bevy-lens.openScheduleVisualizer', () => {
+        ScheduleVisualizerPanel.createOrShow(context.extensionUri, cachedElements);
+    });
+    context.subscriptions.push(openVisualizerCmd);
+
     // 刷新命令
     const refreshCmd = vscode.commands.registerCommand('bevy-lens.refresh', async () => {
         await refreshData();

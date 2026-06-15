@@ -135,7 +135,25 @@ export class TargetCategory {
     ) {}
 }
 
-export type RegistryNode = RegistryCategory | CrateCategory | TargetCategory | BevyElement;
+export class ShaderBindingNode {
+    constructor(
+        public readonly binding: number,
+        public readonly type: 'uniform' | 'texture' | 'sampler',
+        public readonly name: string,
+        public readonly parentShader: BevyElement
+    ) {}
+}
+
+export class ShaderEntryPointNode {
+    constructor(
+        public readonly name: string,
+        public readonly type: 'vertex' | 'fragment' | 'compute',
+        public readonly workgroupSize: string | undefined,
+        public readonly parentShader: BevyElement
+    ) {}
+}
+
+export type RegistryNode = RegistryCategory | CrateCategory | TargetCategory | BevyElement | ShaderBindingNode | ShaderEntryPointNode;
 
 export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<RegistryNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<RegistryNode | undefined | null | void> = new vscode.EventEmitter<RegistryNode | undefined | null | void>();
@@ -229,6 +247,49 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 item.iconPath = new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.green'));
             }
             return item;
+        } else if (element instanceof ShaderBindingNode) {
+            const item = new vscode.TreeItem(`@binding(${element.binding}) ${element.name}`, vscode.TreeItemCollapsibleState.None);
+            item.description = element.type;
+            item.iconPath = new vscode.ThemeIcon('symbol-field', new vscode.ThemeColor('charts.blue'));
+            item.contextValue = 'shaderBinding';
+            
+            const fileUri = vscode.Uri.file(element.parentShader.filePath);
+            item.command = {
+                command: 'vscode.open',
+                title: 'Open File',
+                arguments: [
+                    fileUri,
+                    {
+                        selection: new vscode.Range(
+                            new vscode.Position(element.parentShader.line - 1, 0),
+                            new vscode.Position(element.parentShader.line - 1, 0)
+                        )
+                    }
+                ]
+            };
+            return item;
+        } else if (element instanceof ShaderEntryPointNode) {
+            const wg = element.workgroupSize ? ` (${element.workgroupSize})` : '';
+            const item = new vscode.TreeItem(`fn ${element.name}()${wg}`, vscode.TreeItemCollapsibleState.None);
+            item.description = `@${element.type}`;
+            item.iconPath = new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.orange'));
+            item.contextValue = 'shaderEntryPoint';
+            
+            const fileUri = vscode.Uri.file(element.parentShader.filePath);
+            item.command = {
+                command: 'vscode.open',
+                title: 'Open File',
+                arguments: [
+                    fileUri,
+                    {
+                        selection: new vscode.Range(
+                            new vscode.Position(element.parentShader.line - 1, 0),
+                            new vscode.Position(element.parentShader.line - 1, 0)
+                        )
+                    }
+                ]
+            };
+            return item;
         } else {
             // 使用缓存的诊断结果进行 O(1) 过滤，极速渲染
             const diagnostics = this.diagnosticsCache.get(element.filePath) || [];
@@ -251,7 +312,14 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 errorTag = ' 🟡';
             }
 
-            const item = new vscode.TreeItem(element.name + errorTag, vscode.TreeItemCollapsibleState.None);
+            const hasChildren = element.type === 'Shader' && 
+                element.shaderMetadata && 
+                (element.shaderMetadata.bindings.length > 0 || element.shaderMetadata.entryPoints.length > 0);
+
+            const item = new vscode.TreeItem(
+                element.name + errorTag, 
+                hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+            );
             item.description = element.description;
             
             // 借助辅助函数构建精美的富文本 Markdown 悬停提示
@@ -353,6 +421,21 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 // 如果已经有 specificName，说明已经是具体例子（如 Example: ui/button），则展示其下面的具体 bevy 元素列表
                 return this.getFilteredElementsByTarget(element);
             }
+        }
+
+        // 处理 BevyElement 的子节点（只有 Shader 类型有子节点）
+        if (element instanceof ShaderBindingNode || element instanceof ShaderEntryPointNode) {
+            return [];
+        }
+        if (element && element.type === 'Shader' && element.shaderMetadata) {
+            const nodes: RegistryNode[] = [];
+            for (const b of element.shaderMetadata.bindings) {
+                nodes.push(new ShaderBindingNode(b.binding, b.type, b.name, element));
+            }
+            for (const ep of element.shaderMetadata.entryPoints) {
+                nodes.push(new ShaderEntryPointNode(ep.name, ep.type, ep.workgroupSize, element));
+            }
+            return nodes;
         }
 
         return [];
@@ -461,9 +544,11 @@ export class ExplorerNode {
     constructor(
         public readonly key: string, // 唯一标识，若是文件/文件夹则是 fsPath，若是元素则是 `fsPath:name:type`
         public readonly label: string,
-        public readonly kind: 'directory' | 'file' | 'element',
+        public readonly kind: 'directory' | 'file' | 'element' | 'shaderBinding' | 'shaderEntryPoint',
         public readonly fsPath: string,
-        public readonly elementData?: BevyElement
+        public readonly elementData?: BevyElement,
+        public readonly bindingData?: { binding: number; type: 'uniform' | 'texture' | 'sampler'; name: string },
+        public readonly entryPointData?: { name: string; type: 'vertex' | 'fragment' | 'compute'; workgroupSize?: string }
     ) {}
 }
 
@@ -522,14 +607,18 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         const ext = path.extname(node.fsPath);
         const isBevyFile = ext === '.rs' || ext === '.wgsl' || ext === '.wesl';
 
-        const item = new vscode.TreeItem(
-            node.label,
-            node.kind === 'element' 
-                ? vscode.TreeItemCollapsibleState.None 
-                : (node.kind === 'file' && !isBevyFile 
-                    ? vscode.TreeItemCollapsibleState.None 
-                    : vscode.TreeItemCollapsibleState.Collapsed)
-        );
+        let collapsibleState = vscode.TreeItemCollapsibleState.None;
+        if (node.kind === 'directory') {
+            collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+        } else if (node.kind === 'file') {
+            collapsibleState = isBevyFile ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
+        } else if (node.kind === 'element' && node.elementData?.type === 'Shader') {
+            const hasChildren = node.elementData.shaderMetadata &&
+                (node.elementData.shaderMetadata.bindings.length > 0 || node.elementData.shaderMetadata.entryPoints.length > 0);
+            collapsibleState = hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
+        }
+
+        const item = new vscode.TreeItem(node.label, collapsibleState);
 
         if (node.kind === 'directory') {
             item.contextValue = 'directory';
@@ -539,7 +628,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             item.resourceUri = vscode.Uri.file(node.fsPath);
 
             // 方案B：将 iconPath 设置为 vscode.ThemeIcon.File，由 VS Code 底层自动依据该节点的 resourceUri
-            // 的后缀（.rs, .wgsl, .wesl 等）从用户当前激活的“文件图标主题”中抓取对应图标。
+            // 的后缀（.rs, .wgsl, .wesl 等）从用户当前激活 of“文件图标主题”中抓取对应图标。
             item.iconPath = vscode.ThemeIcon.File;
 
             // 使用缓存的诊断结果 O(1) 取值
@@ -643,6 +732,48 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                     }
                 ]
             };
+        } else if (node.kind === 'shaderBinding' && node.bindingData && node.elementData) {
+            const b = node.bindingData;
+            item.description = b.type;
+            item.iconPath = new vscode.ThemeIcon('symbol-field', new vscode.ThemeColor('charts.blue'));
+            item.contextValue = 'shaderBinding';
+
+            const fileUri = vscode.Uri.file(node.fsPath);
+            item.command = {
+                command: 'vscode.open',
+                title: 'Open File',
+                arguments: [
+                    fileUri,
+                    {
+                        selection: new vscode.Range(
+                            new vscode.Position(node.elementData.line - 1, 0),
+                            new vscode.Position(node.elementData.line - 1, 0)
+                        )
+                    }
+                ]
+            };
+        } else if (node.kind === 'shaderEntryPoint' && node.entryPointData && node.elementData) {
+            const ep = node.entryPointData;
+            const wg = ep.workgroupSize ? ` (${ep.workgroupSize})` : '';
+            item.label = `fn ${ep.name}()${wg}`;
+            item.description = `@${ep.type}`;
+            item.iconPath = new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.orange'));
+            item.contextValue = 'shaderEntryPoint';
+
+            const fileUri = vscode.Uri.file(node.fsPath);
+            item.command = {
+                command: 'vscode.open',
+                title: 'Open File',
+                arguments: [
+                    fileUri,
+                    {
+                        selection: new vscode.Range(
+                            new vscode.Position(node.elementData.line - 1, 0),
+                            new vscode.Position(node.elementData.line - 1, 0)
+                        )
+                    }
+                ]
+            };
         }
 
         return item;
@@ -677,7 +808,28 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
         const currentPath = node ? node.fsPath : this.workspaceRoot;
 
+        if (node && (node.kind === 'shaderBinding' || node.kind === 'shaderEntryPoint')) {
+            return [];
+        }
+
         if (node && node.kind === 'element') {
+            const el = node.elementData;
+            if (el?.type === 'Shader' && el.shaderMetadata) {
+                const nodes: ExplorerNode[] = [];
+                const meta = el.shaderMetadata;
+                
+                for (const b of meta.bindings) {
+                    const key = `${el.filePath}:binding:${b.binding}:${b.name}`;
+                    nodes.push(new ExplorerNode(key, `@binding(${b.binding}) ${b.name}`, 'shaderBinding', el.filePath, el, b, undefined));
+                }
+                
+                for (const ep of meta.entryPoints) {
+                    const key = `${el.filePath}:entry:${ep.name}`;
+                    nodes.push(new ExplorerNode(key, ep.name, 'shaderEntryPoint', el.filePath, el, undefined, ep));
+                }
+                
+                return nodes;
+            }
             return [];
         }
 

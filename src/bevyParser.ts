@@ -42,7 +42,8 @@ export class BevyParser {
         // 使用 VS Code 优化的 findFiles API，忽略 target, .git, node_modules 等目录
         const filesUris = await vscode.workspace.findFiles(
             '{**/*.rs,**/*.wgsl,**/*.wesl}',
-            '{**/target/**,**/.git/**,**/node_modules/**}'
+            '{**/target/**,**/.git/**,**/node_modules/**}',
+            100000
         );
 
         // 异步并行读取并解析文件
@@ -164,6 +165,34 @@ export class BevyParser {
                             while ((specMatch = inSetRegex.exec(chainText)) !== null) { if (!system.systemMetadata.belongsToSets.includes(specMatch[1])) system.systemMetadata.belongsToSets.push(specMatch[1]); }
                             const runIfRegex = /\.run_if\(\s*([^)]+)\)/g;
                             while ((specMatch = runIfRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runConditions.includes(specMatch[1])) system.systemMetadata.runConditions.push(specMatch[1]); }
+                        }
+                    }
+
+                    // 解析 chain() 并生成系统间的串行 runsBefore/runsAfter 关系
+                    if (chainText.includes('.chain(')) {
+                        const chainRegex = /\(\s*([A-Za-z0-9_,\s\n\r:]+)\s*\)\s*\.chain\(\)/g;
+                        let chainMatch: RegExpExecArray | null;
+                        while ((chainMatch = chainRegex.exec(chainText)) !== null) {
+                            const rawNames = chainMatch[1].split(',').map(s => s.trim()).filter(s => s.length > 0);
+                            const sysNames = rawNames.map(name => name.split('::').pop() || name);
+                            for (let idx = 1; idx < sysNames.length; idx++) {
+                                const prevSysName = sysNames[idx - 1];
+                                const currentSysName = sysNames[idx];
+
+                                const currentSys = globalSystems.find(s => s.name === currentSysName);
+                                if (currentSys && currentSys.systemMetadata) {
+                                    if (!currentSys.systemMetadata.runsAfter.includes(prevSysName)) {
+                                        currentSys.systemMetadata.runsAfter.push(prevSysName);
+                                    }
+                                }
+
+                                const prevSys = globalSystems.find(s => s.name === prevSysName);
+                                if (prevSys && prevSys.systemMetadata) {
+                                    if (!prevSys.systemMetadata.runsBefore.includes(currentSysName)) {
+                                        prevSys.systemMetadata.runsBefore.push(currentSysName);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -482,49 +511,50 @@ export class BevyParser {
         const bindings: { binding: number; type: 'uniform' | 'texture' | 'sampler'; name: string }[] = [];
         const entryPoints: { name: string; type: 'vertex' | 'fragment' | 'compute'; workgroupSize?: string }[] = [];
 
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            const bindingMatch = line.match(/@group\(\d+\)\s*@binding\(\s*(\d+)\s*\)\s*var(?:<uniform>)?\s*([A-Za-z0-9_]+)\s*:/);
-            if (bindingMatch) {
-                let bindingType: 'uniform' | 'texture' | 'sampler' = 'uniform';
-                if (line.includes('texture_2d')) bindingType = 'texture';
-                else if (line.includes('sampler')) bindingType = 'sampler';
-                bindings.push({ binding: parseInt(bindingMatch[1]), type: bindingType, name: bindingMatch[2] });
+        // 1. 匹配 Bindings 资源变量声明 (支持跨行和不同的@group/@binding顺序)
+        const bindingRegex = /(?:@group\(\s*\d+\s*\)\s*@binding\(\s*(\d+)\s*\)|@binding\(\s*(\d+)\s*\)\s*@group\(\s*\d+\s*\))\s*var\s*(?:<\s*([a-zA-Z0-9_,\s]+)\s*>)?\s*([a-zA-Z0-9_]+)\s*:\s*([^;]+);/g;
+        let bindingMatch;
+        while ((bindingMatch = bindingRegex.exec(content)) !== null) {
+            const bindingNumStr = bindingMatch[1] || bindingMatch[2];
+            const bindingNum = parseInt(bindingNumStr);
+            const varName = bindingMatch[4];
+            const typeDecl = bindingMatch[5].trim();
+
+            let bindingType: 'uniform' | 'texture' | 'sampler' = 'uniform';
+            if (typeDecl.includes('texture')) {
+                bindingType = 'texture';
+            } else if (typeDecl.includes('sampler')) {
+                bindingType = 'sampler';
             }
 
-            if (line.includes('fn ')) {
-                let decorators = '';
-                for (let k = Math.max(0, i - 3); k <= i; k++) {
-                    decorators += ' ' + lines[k].trim();
-                }
+            bindings.push({
+                binding: bindingNum,
+                type: bindingType,
+                name: varName
+            });
+        }
 
-                let type: 'vertex' | 'fragment' | 'compute' | null = null;
-                if (decorators.includes('@vertex')) {
-                    type = 'vertex';
-                } else if (decorators.includes('@fragment')) {
-                    type = 'fragment';
-                } else if (decorators.includes('@compute')) {
-                    type = 'compute';
-                }
+        // 2. 匹配 入口函数 Entry Points (支持跨行各种修饰器)
+        const entryRegex = /(?:@[a-zA-Z0-9_]+(?:\([^\)]*\))?\s*)*@(vertex|fragment|compute)(?:\s*@[a-zA-Z0-9_]+(?:\([^\)]*\))?)*\s*fn\s+([a-zA-Z0-9_]+)/g;
+        let entryMatch;
+        while ((entryMatch = entryRegex.exec(content)) !== null) {
+            const decoratorType = entryMatch[1] as 'vertex' | 'fragment' | 'compute';
+            const fnName = entryMatch[2];
+            const entireMatch = entryMatch[0];
 
-                if (type) {
-                    const fnMatch = line.match(/fn\s+([A-Za-z0-9_]+)/);
-                    if (fnMatch) {
-                        let workgroupSize: string | undefined;
-                        if (type === 'compute') {
-                            const sizeMatch = decorators.match(/@workgroup_size\(([^)]+)\)/);
-                            if (sizeMatch) {
-                                workgroupSize = sizeMatch[1].trim();
-                            }
-                        }
-                        entryPoints.push({
-                            name: fnMatch[1],
-                            type,
-                            workgroupSize
-                        });
-                    }
+            let workgroupSize: string | undefined;
+            if (decoratorType === 'compute') {
+                const sizeMatch = entireMatch.match(/@workgroup_size\s*\(([^\)]+)\)/);
+                if (sizeMatch) {
+                    workgroupSize = sizeMatch[1].trim();
                 }
             }
+
+            entryPoints.push({
+                name: fnName,
+                type: decoratorType,
+                workgroupSize
+            });
         }
 
         let finalDocstring = docstring || `WGSL shader asset located at ${fileName}.`;

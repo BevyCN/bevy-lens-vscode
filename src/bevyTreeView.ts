@@ -206,7 +206,37 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
         this.refresh();
     }
 
+    private refreshTimeout: any = undefined;
+
+    public updateDiagnostics(uris: readonly vscode.Uri[]): void {
+        let changed = false;
+        const filePaths = new Set(this.elements.map(e => e.filePath));
+        for (const uri of uris) {
+            const filePath = uri.fsPath;
+            if (filePaths.has(filePath)) {
+                const diags = vscode.languages.getDiagnostics(uri);
+                if (diags && diags.length > 0) {
+                    this.diagnosticsCache.set(filePath, diags);
+                } else {
+                    this.diagnosticsCache.delete(filePath);
+                }
+                changed = true;
+            }
+        }
+        if (changed) {
+            if (this.refreshTimeout) {
+                clearTimeout(this.refreshTimeout);
+            }
+            this.refreshTimeout = setTimeout(() => {
+                this._onDidChangeTreeData.fire();
+            }, 150);
+        }
+    }
+
     public refresh(): void {
+        if (this.refreshTimeout) {
+            clearTimeout(this.refreshTimeout);
+        }
         // 在强制刷新时也同步更新一次诊断缓存
         this.rebuildDiagnosticsCache();
         this._onDidChangeTreeData.fire();
@@ -585,7 +615,37 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         }
     }
 
+    private refreshTimeout: any = undefined;
+
+    public updateDiagnostics(uris: readonly vscode.Uri[]): void {
+        let changed = false;
+        const filePaths = new Set(this.elements.map(e => e.filePath));
+        for (const uri of uris) {
+            const filePath = uri.fsPath;
+            if (filePaths.has(filePath)) {
+                const diags = vscode.languages.getDiagnostics(uri);
+                if (diags && diags.length > 0) {
+                    this.diagnosticsCache.set(filePath, diags);
+                } else {
+                    this.diagnosticsCache.delete(filePath);
+                }
+                changed = true;
+            }
+        }
+        if (changed) {
+            if (this.refreshTimeout) {
+                clearTimeout(this.refreshTimeout);
+            }
+            this.refreshTimeout = setTimeout(() => {
+                this._onDidChangeTreeData.fire();
+            }, 150);
+        }
+    }
+
     public refresh(): void {
+        if (this.refreshTimeout) {
+            clearTimeout(this.refreshTimeout);
+        }
         this.rebuildDiagnosticsCache();
         this._onDidChangeTreeData.fire();
     }

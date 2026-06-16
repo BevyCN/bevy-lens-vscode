@@ -289,9 +289,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // 7. 监听诊断信息发生变化（rust-analyzer 报错刷新）
     const diagListener = vscode.languages.onDidChangeDiagnostics((event) => {
-        // 诊断信息刷新时，触发 TreeView 重新渲染来实时表现红标/黄标状态
-        globalRegistryProvider.refresh();
-        semanticExplorerProvider.refresh();
+        // 诊断信息刷新时，只针对发生变化的 URI 进行增量更新，避免全局扫描卡顿
+        globalRegistryProvider.updateDiagnostics(event.uris);
+        semanticExplorerProvider.updateDiagnostics(event.uris);
     });
     context.subscriptions.push(diagListener);
 

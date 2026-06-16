@@ -70,6 +70,9 @@ This extension contributes the following settings:
 
 ## 📅 Release Notes
 
+### 0.1.17
+*   Fixed a bug where the tree view could fail to show or render correctly by normalizing file paths to lowercase keys inside the diagnostics cache, resolving path casing mismatches in workspace diagnostic lookup.
+
 ### 0.1.16
 *   Fixed path mismatch issues in Semantic Explorer by normalizing file paths to lowercase keys, resolving tree node synchronization bugs on Windows/WSL case-insensitive file systems.
 *   Assigned unique IDs to TreeView nodes to ensure VS Code correctly preserves node expansion state and selection highlighting across registry refreshes.

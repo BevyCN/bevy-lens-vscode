@@ -70,6 +70,10 @@ This extension contributes the following settings:
 
 ## 📅 Release Notes
 
+### 0.1.15
+*   Updated the project repository address to `https://github.com/BevyCN/bevy-lens-vscode`.
+*   Updated README.md image sources to use raw GitHub absolute paths.
+
 ### 0.1.14
 *   Fixed TreeView item indentation alignment. Files containing no Bevy elements will correctly align their icons with other files in the Semantic Explorer.
 

@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"

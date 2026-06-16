@@ -18,7 +18,7 @@ Get a centralized, organized view of all Bevy types defined in your project:
 *   **Code Navigation**: Click any item in the tree view to instantly jump directly to its definition in the editor.
 
 <p align="center">
-  <img src="images/globalregistry.jpg" alt="Bevy Global Registry" width="600px">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/globalregistry.jpg" alt="Bevy Global Registry" width="600px">
 </p>
 
 ### 2. 📁 Semantic Workspace Explorer
@@ -28,7 +28,7 @@ An enhanced physical file explorer that reveals Bevy structures inline:
 *   **Custom Brand Icons**: Instantly differentiate between components, systems, and assets using dedicated VS Code codicons matching your active icon theme.
 
 <p align="center">
-  <img src="images/explore.jpg" alt="Semantic Workspace Explorer" width="600px">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/explore.jpg" alt="Semantic Workspace Explorer" width="600px">
 </p>
 
 ### 3. 📝 Rich Previews, Shader Binding Bridge & Concurrency Diagnostics
@@ -37,7 +37,7 @@ An enhanced physical file explorer that reveals Bevy structures inline:
 *   **Parallel Query Write-Conflict Linter**: Statically checks systems registered in the same schedule phase. If two systems read/write to the same component/resource mutably without declared ordering (`.after()`, `.before()`, `.in_set()`), Bevy Lens flags it with a status indicator (🔴 / 🟡) and warns you of potential race conditions.
 
 <p align="center">
-  <img src="images/popup.jpg" alt="Diagnostics and Rich Previews" width="600px">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/popup.jpg" alt="Diagnostics and Rich Previews" width="600px">
 </p>
 
 ### 4. 📊 ECS Schedule & Dataflow Visualizer (Schedule Visualizer)

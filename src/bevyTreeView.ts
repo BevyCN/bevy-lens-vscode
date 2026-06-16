@@ -178,7 +178,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     // 重新构建文件编译诊断缓存
     private rebuildDiagnosticsCache() {
         this.diagnosticsCache.clear();
-        const files = new Set(this.elements.map(e => e.filePath));
+        const files = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
         for (const filePath of files) {
             const uri = vscode.Uri.file(filePath);
             const diags = vscode.languages.getDiagnostics(uri);
@@ -210,9 +210,9 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
 
     public updateDiagnostics(uris: readonly vscode.Uri[]): void {
         let changed = false;
-        const filePaths = new Set(this.elements.map(e => e.filePath));
+        const filePaths = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
         for (const uri of uris) {
-            const filePath = uri.fsPath;
+            const filePath = path.normalize(uri.fsPath).toLowerCase();
             if (filePaths.has(filePath)) {
                 const diags = vscode.languages.getDiagnostics(uri);
                 if (diags && diags.length > 0) {
@@ -327,7 +327,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             return item;
         } else {
             // 使用缓存的诊断结果进行 O(1) 过滤，极速渲染
-            const diagnostics = this.diagnosticsCache.get(element.filePath) || [];
+            const diagnostics = this.diagnosticsCache.get(path.normalize(element.filePath).toLowerCase()) || [];
             
             // 精准判定该元素所在行附近是否存在语法错误
             const lineIndex = element.line - 1;
@@ -628,7 +628,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     private rebuildDiagnosticsCache() {
         this.diagnosticsCache.clear();
-        const files = new Set(this.elements.map(e => e.filePath));
+        const files = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
         for (const filePath of files) {
             const uri = vscode.Uri.file(filePath);
             const diags = vscode.languages.getDiagnostics(uri);
@@ -642,9 +642,9 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     public updateDiagnostics(uris: readonly vscode.Uri[]): void {
         let changed = false;
-        const filePaths = new Set(this.elements.map(e => e.filePath));
+        const filePaths = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
         for (const uri of uris) {
-            const filePath = uri.fsPath;
+            const filePath = path.normalize(uri.fsPath).toLowerCase();
             if (filePaths.has(filePath)) {
                 const diags = vscode.languages.getDiagnostics(uri);
                 if (diags && diags.length > 0) {
@@ -697,7 +697,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         } else if (node.kind === 'file') {
             // 只有当该文件是 Bevy 支持的格式，且文件内部确实解析到了 Bevy 元素时，才设置为 Collapsed。
             // 否则（如普通文件或空 Rust 文件）设为 None。VS Code 遇到同级混合节点时会自动留空对齐。
-            const fileElements = isBevyFile ? this.elements.filter(e => e.filePath === node.fsPath) : [];
+            const normFsPath = path.normalize(node.fsPath).toLowerCase();
+            const fileElements = isBevyFile ? this.elements.filter(e => path.normalize(e.filePath).toLowerCase() === normFsPath) : [];
             collapsibleState = fileElements.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
         } else if (node.kind === 'element' && node.elementData?.type === 'Shader') {
             const hasChildren = node.elementData.shaderMetadata &&
@@ -720,8 +721,9 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             // 的后缀（.rs, .wgsl, .wesl 等）从用户当前激活 of“文件图标主题”中抓取对应图标。
             item.iconPath = vscode.ThemeIcon.File;
 
+            const normFsPath = path.normalize(node.fsPath).toLowerCase();
             // 使用缓存的诊断结果 O(1) 取值
-            const diagnostics = this.diagnosticsCache.get(node.fsPath) || [];
+            const diagnostics = this.diagnosticsCache.get(normFsPath) || [];
             const errors = diagnostics.filter(d => d.severity === vscode.DiagnosticSeverity.Error);
             const warnings = diagnostics.filter(d => d.severity === vscode.DiagnosticSeverity.Warning);
 
@@ -732,7 +734,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 statusTag = ` 🟡 ${warnings.length} Warnings`;
             }
 
-            const fileElements = this.elements.filter(e => e.filePath === node.fsPath);
+            const fileElements = this.elements.filter(e => path.normalize(e.filePath).toLowerCase() === normFsPath);
             const descParts: string[] = [];
             if (fileElements.length > 0) {
                 descParts.push(`${fileElements.length} elements`);

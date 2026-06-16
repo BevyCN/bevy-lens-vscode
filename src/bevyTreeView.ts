@@ -237,14 +237,8 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 changed = true;
             }
         }
-        if (changed) {
-            if (this.refreshTimeout) {
-                clearTimeout(this.refreshTimeout);
-            }
-            this.refreshTimeout = setTimeout(() => {
-                this._onDidChangeTreeData.fire();
-            }, 150);
-        }
+        // 移除了全局 fire() 以避免在用户打字时频繁触发蓝色的加载进度条。
+        // 缓存已经静默更新，下一次树刷新时会包含最新的错误标签。
     }
 
     public refresh(): void {
@@ -603,8 +597,8 @@ export class ExplorerNode {
 }
 
 export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<ExplorerNode> {
-    private _onDidChangeTreeData: vscode.EventEmitter<ExplorerNode | undefined | null | void> = new vscode.EventEmitter<ExplorerNode | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<ExplorerNode | undefined | null | void> = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData: vscode.EventEmitter<ExplorerNode | ExplorerNode[] | undefined | null | void> = new vscode.EventEmitter<ExplorerNode | ExplorerNode[] | undefined | null | void>();
+    readonly onDidChangeTreeData: vscode.Event<ExplorerNode | ExplorerNode[] | undefined | null | void> = this._onDidChangeTreeData.event;
 
     private elements: BevyElement[] = [];
     private workspaceRoot: string = '';
@@ -655,7 +649,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
     private refreshTimeout: any = undefined;
 
     public updateDiagnostics(uris: readonly vscode.Uri[]): void {
-        let changed = false;
+        let changedNodes: ExplorerNode[] = [];
         const filePaths = new Set(this.elements.map(e => normalizePath(e.filePath)));
         for (const uri of uris) {
             const filePath = normalizePath(uri.fsPath);
@@ -666,15 +660,18 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 } else {
                     this.diagnosticsCache.delete(filePath);
                 }
-                changed = true;
+                const fileNode = this.findFileNode(uri.fsPath);
+                if (fileNode) {
+                    changedNodes.push(fileNode);
+                }
             }
         }
-        if (changed) {
+        if (changedNodes.length > 0) {
             if (this.refreshTimeout) {
                 clearTimeout(this.refreshTimeout);
             }
             this.refreshTimeout = setTimeout(() => {
-                this._onDidChangeTreeData.fire();
+                this._onDidChangeTreeData.fire(changedNodes.length === 1 ? changedNodes[0] : changedNodes);
             }, 150);
         }
     }

@@ -2,7 +2,9 @@
 
 **Bevy Lens** is a lightweight, high-performance VS Code extension designed specifically for the **Bevy Game Engine**. By statically analyzing your Rust codebase, WGSL/WESL shaders, Bevy Lens maps your ECS universe into a dedicated sidebar—drastically reducing cognitive load and helping you keep track of your game's systems, components, resources, states, and more.
 
-Official Website: [BevyCN 中文社区](https://bevycn.com/)
+Official Website: [BevyCN](https://bevycn.com/)
+
+Download: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bevycn.bevy-lens) | [Open VSX](https://open-vsx.org/extension/BevyCN/bevy-lens)
 
 ---
 

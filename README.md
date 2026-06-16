@@ -70,6 +70,10 @@ This extension contributes the following settings:
 
 ## 📅 Release Notes
 
+### 0.1.16
+*   Fixed path mismatch issues in Semantic Explorer by normalizing file paths to lowercase keys, resolving tree node synchronization bugs on Windows/WSL case-insensitive file systems.
+*   Assigned unique IDs to TreeView nodes to ensure VS Code correctly preserves node expansion state and selection highlighting across registry refreshes.
+
 ### 0.1.15
 *   Updated the project repository address to `https://github.com/BevyCN/bevy-lens-vscode`.
 *   Updated README.md image sources to use raw GitHub absolute paths.

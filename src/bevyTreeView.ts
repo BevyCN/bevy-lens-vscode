@@ -251,6 +251,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             );
             item.contextValue = 'category';
             item.iconPath = new vscode.ThemeIcon(element.icon);
+            item.id = `category:${element.type}`;
             return item;
         } else if (element instanceof CrateCategory) {
             const items = this.getFilteredElementsByTypeAndCrate(element.parentCategory.type, element.crateName);
@@ -260,6 +261,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             );
             item.contextValue = 'crateCategory';
             item.iconPath = new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.purple'));
+            item.id = `crate:${element.parentCategory.type}:${element.crateName}`;
             return item;
         } else if (element instanceof TargetCategory) {
             let label = element.label;
@@ -276,12 +278,14 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             } else {
                 item.iconPath = new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.green'));
             }
+            item.id = `target:${element.parentCrate.parentCategory.type}:${element.parentCrate.crateName}:${element.targetType}:${element.specificName || ''}`;
             return item;
         } else if (element instanceof ShaderBindingNode) {
             const item = new vscode.TreeItem(`@binding(${element.binding}) ${element.name}`, vscode.TreeItemCollapsibleState.None);
             item.description = element.type;
             item.iconPath = new vscode.ThemeIcon('symbol-field', new vscode.ThemeColor('charts.blue'));
             item.contextValue = 'shaderBinding';
+            item.id = `binding:${element.parentShader.filePath}:${element.binding}:${element.name}`;
             
             const fileUri = vscode.Uri.file(element.parentShader.filePath);
             item.command = {
@@ -304,6 +308,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             item.description = `@${element.type}`;
             item.iconPath = new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.orange'));
             item.contextValue = 'shaderEntryPoint';
+            item.id = `entrypoint:${element.parentShader.filePath}:${element.name}`;
             
             const fileUri = vscode.Uri.file(element.parentShader.filePath);
             item.command = {
@@ -351,6 +356,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
             );
             item.description = element.description;
+            item.id = `element:${element.filePath}:${element.name}:${element.type}`;
             
             // 借助辅助函数构建精美的富文本 Markdown 悬停提示
             item.tooltip = buildElementTooltip(element, [...elementErrors, ...elementWarnings]);
@@ -595,9 +601,26 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
+    private getMapKey(key: string): string {
+        const firstColonIndex = key.indexOf(':');
+        if (firstColonIndex > 1) {
+            const filePath = key.substring(0, firstColonIndex);
+            const rest = key.substring(firstColonIndex);
+            return path.normalize(filePath).toLowerCase() + rest;
+        } else if (firstColonIndex === 1) {
+            const secondColonIndex = key.indexOf(':', 2);
+            if (secondColonIndex !== -1) {
+                const filePath = key.substring(0, secondColonIndex);
+                const rest = key.substring(secondColonIndex);
+                return path.normalize(filePath).toLowerCase() + rest;
+            }
+        }
+        return path.normalize(key).toLowerCase();
+    }
+
     public updateData(elements: BevyElement[], workspaceRoot: string) {
         this.elements = elements;
-        this.workspaceRoot = workspaceRoot;
+        this.workspaceRoot = path.normalize(workspaceRoot).toLowerCase();
         this.nodeMap.clear();
         this.rebuildDiagnosticsCache();
         this.refresh();
@@ -652,12 +675,13 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     // 根据文件路径找到 Tree 中的 ExplorerNode 节点，以便在编辑器打开时 Reveal
     public findFileNode(filePath: string): ExplorerNode | undefined {
-        let node = this.nodeMap.get(filePath);
+        const normKey = this.getMapKey(filePath);
+        let node = this.nodeMap.get(normKey);
         if (!node) {
             const ext = path.extname(filePath);
             if (ext === '.rs' || ext === '.wgsl' || ext === '.wesl') {
                 node = new ExplorerNode(filePath, path.basename(filePath), 'file', filePath);
-                this.nodeMap.set(filePath, node);
+                this.nodeMap.set(normKey, node);
             }
         }
         return node;
@@ -682,6 +706,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         }
 
         const item = new vscode.TreeItem(node.label, collapsibleState);
+        item.id = node.key;
 
         if (node.kind === 'directory') {
             item.contextValue = 'directory';
@@ -846,19 +871,21 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     getParent(node: ExplorerNode): vscode.ProviderResult<ExplorerNode> {
         if (node.kind === 'element') {
-            let parentNode = this.nodeMap.get(node.fsPath);
+            const parentKey = this.getMapKey(node.fsPath);
+            let parentNode = this.nodeMap.get(parentKey);
             if (!parentNode) {
                 parentNode = new ExplorerNode(node.fsPath, path.basename(node.fsPath), 'file', node.fsPath);
-                this.nodeMap.set(node.fsPath, parentNode);
+                this.nodeMap.set(parentKey, parentNode);
             }
             return parentNode;
         } else {
-            const parentDir = path.dirname(node.fsPath);
-            if (parentDir.startsWith(this.workspaceRoot) && parentDir !== this.workspaceRoot) {
-                let parentNode = this.nodeMap.get(parentDir);
+            const parentDir = path.normalize(path.dirname(node.fsPath));
+            const parentDirLower = parentDir.toLowerCase();
+            if (parentDirLower.startsWith(this.workspaceRoot) && parentDirLower !== this.workspaceRoot) {
+                let parentNode = this.nodeMap.get(parentDirLower);
                 if (!parentNode) {
                     parentNode = new ExplorerNode(parentDir, path.basename(parentDir), 'directory', parentDir);
-                    this.nodeMap.set(parentDir, parentNode);
+                    this.nodeMap.set(parentDirLower, parentNode);
                 }
                 return parentNode;
             }
@@ -899,11 +926,12 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         }
 
         if (node && node.kind === 'file') {
-            const fileElements = this.elements.filter(e => e.filePath === currentPath);
+            const targetPath = path.normalize(currentPath).toLowerCase();
+            const fileElements = this.elements.filter(e => path.normalize(e.filePath).toLowerCase() === targetPath);
             return fileElements.map(el => {
                 const key = `${el.filePath}:${el.name}:${el.type}`;
                 const elNode = new ExplorerNode(key, el.name, 'element', el.filePath, el);
-                this.nodeMap.set(key, elNode);
+                this.nodeMap.set(this.getMapKey(key), elNode);
                 return elNode;
             });
         }
@@ -933,11 +961,11 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
             if (stat.isDirectory()) {
                 const dirNode = new ExplorerNode(fullPath, item, 'directory', fullPath);
-                this.nodeMap.set(fullPath, dirNode);
+                this.nodeMap.set(this.getMapKey(fullPath), dirNode);
                 dirs.push(dirNode);
             } else if (stat.isFile()) {
                 const fileNode = new ExplorerNode(fullPath, item, 'file', fullPath);
-                this.nodeMap.set(fullPath, fileNode);
+                this.nodeMap.set(this.getMapKey(fullPath), fileNode);
                 files.push(fileNode);
             }
         }

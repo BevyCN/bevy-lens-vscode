@@ -3,6 +3,20 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { BevyElement } from './bevyParser';
 
+const isWindows = process.platform === 'win32';
+
+function normalizePath(p: string): string {
+    const normalized = path.normalize(p);
+    if (isWindows) {
+        // 如果是 UNC 路径（例如 \\wsl$ 或 \\wsl.localhost），由于指向的是 Linux 文件系统，它是区分大小写的，绝对不能转为小写！
+        if (normalized.startsWith('\\\\') || normalized.startsWith('//')) {
+            return normalized;
+        }
+        return normalized.toLowerCase();
+    }
+    return normalized;
+}
+
 // ==========================================
 // 0. 辅助函数：构建精美富文本提示 tooltip
 // ==========================================
@@ -178,7 +192,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     // 重新构建文件编译诊断缓存
     private rebuildDiagnosticsCache() {
         this.diagnosticsCache.clear();
-        const files = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
+        const files = new Set(this.elements.map(e => normalizePath(e.filePath)));
         for (const filePath of files) {
             const uri = vscode.Uri.file(filePath);
             const diags = vscode.languages.getDiagnostics(uri);
@@ -210,9 +224,9 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
 
     public updateDiagnostics(uris: readonly vscode.Uri[]): void {
         let changed = false;
-        const filePaths = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
+        const filePaths = new Set(this.elements.map(e => normalizePath(e.filePath)));
         for (const uri of uris) {
-            const filePath = path.normalize(uri.fsPath).toLowerCase();
+            const filePath = normalizePath(uri.fsPath);
             if (filePaths.has(filePath)) {
                 const diags = vscode.languages.getDiagnostics(uri);
                 if (diags && diags.length > 0) {
@@ -327,7 +341,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             return item;
         } else {
             // 使用缓存的诊断结果进行 O(1) 过滤，极速渲染
-            const diagnostics = this.diagnosticsCache.get(path.normalize(element.filePath).toLowerCase()) || [];
+            const diagnostics = this.diagnosticsCache.get(normalizePath(element.filePath)) || [];
             
             // 精准判定该元素所在行附近是否存在语法错误
             const lineIndex = element.line - 1;
@@ -606,21 +620,21 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         if (firstColonIndex > 1) {
             const filePath = key.substring(0, firstColonIndex);
             const rest = key.substring(firstColonIndex);
-            return path.normalize(filePath).toLowerCase() + rest;
+            return normalizePath(filePath) + rest;
         } else if (firstColonIndex === 1) {
             const secondColonIndex = key.indexOf(':', 2);
             if (secondColonIndex !== -1) {
                 const filePath = key.substring(0, secondColonIndex);
                 const rest = key.substring(secondColonIndex);
-                return path.normalize(filePath).toLowerCase() + rest;
+                return normalizePath(filePath) + rest;
             }
         }
-        return path.normalize(key).toLowerCase();
+        return normalizePath(key);
     }
 
     public updateData(elements: BevyElement[], workspaceRoot: string) {
         this.elements = elements;
-        this.workspaceRoot = path.normalize(workspaceRoot).toLowerCase();
+        this.workspaceRoot = normalizePath(workspaceRoot);
         this.nodeMap.clear();
         this.rebuildDiagnosticsCache();
         this.refresh();
@@ -628,7 +642,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     private rebuildDiagnosticsCache() {
         this.diagnosticsCache.clear();
-        const files = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
+        const files = new Set(this.elements.map(e => normalizePath(e.filePath)));
         for (const filePath of files) {
             const uri = vscode.Uri.file(filePath);
             const diags = vscode.languages.getDiagnostics(uri);
@@ -642,9 +656,9 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     public updateDiagnostics(uris: readonly vscode.Uri[]): void {
         let changed = false;
-        const filePaths = new Set(this.elements.map(e => path.normalize(e.filePath).toLowerCase()));
+        const filePaths = new Set(this.elements.map(e => normalizePath(e.filePath)));
         for (const uri of uris) {
-            const filePath = path.normalize(uri.fsPath).toLowerCase();
+            const filePath = normalizePath(uri.fsPath);
             if (filePaths.has(filePath)) {
                 const diags = vscode.languages.getDiagnostics(uri);
                 if (diags && diags.length > 0) {
@@ -697,8 +711,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         } else if (node.kind === 'file') {
             // 只有当该文件是 Bevy 支持的格式，且文件内部确实解析到了 Bevy 元素时，才设置为 Collapsed。
             // 否则（如普通文件或空 Rust 文件）设为 None。VS Code 遇到同级混合节点时会自动留空对齐。
-            const normFsPath = path.normalize(node.fsPath).toLowerCase();
-            const fileElements = isBevyFile ? this.elements.filter(e => path.normalize(e.filePath).toLowerCase() === normFsPath) : [];
+            const normFsPath = normalizePath(node.fsPath);
+            const fileElements = isBevyFile ? this.elements.filter(e => normalizePath(e.filePath) === normFsPath) : [];
             collapsibleState = fileElements.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
         } else if (node.kind === 'element' && node.elementData?.type === 'Shader') {
             const hasChildren = node.elementData.shaderMetadata &&
@@ -721,7 +735,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             // 的后缀（.rs, .wgsl, .wesl 等）从用户当前激活 of“文件图标主题”中抓取对应图标。
             item.iconPath = vscode.ThemeIcon.File;
 
-            const normFsPath = path.normalize(node.fsPath).toLowerCase();
+            const normFsPath = normalizePath(node.fsPath);
             // 使用缓存的诊断结果 O(1) 取值
             const diagnostics = this.diagnosticsCache.get(normFsPath) || [];
             const errors = diagnostics.filter(d => d.severity === vscode.DiagnosticSeverity.Error);
@@ -734,7 +748,7 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 statusTag = ` 🟡 ${warnings.length} Warnings`;
             }
 
-            const fileElements = this.elements.filter(e => path.normalize(e.filePath).toLowerCase() === normFsPath);
+            const fileElements = this.elements.filter(e => normalizePath(e.filePath) === normFsPath);
             const descParts: string[] = [];
             if (fileElements.length > 0) {
                 descParts.push(`${fileElements.length} elements`);
@@ -882,12 +896,12 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             return parentNode;
         } else {
             const parentDir = path.normalize(path.dirname(node.fsPath));
-            const parentDirLower = parentDir.toLowerCase();
-            if (parentDirLower.startsWith(this.workspaceRoot) && parentDirLower !== this.workspaceRoot) {
-                let parentNode = this.nodeMap.get(parentDirLower);
+            const parentDirKey = normalizePath(parentDir);
+            if (parentDirKey.startsWith(this.workspaceRoot) && parentDirKey !== this.workspaceRoot) {
+                let parentNode = this.nodeMap.get(parentDirKey);
                 if (!parentNode) {
                     parentNode = new ExplorerNode(parentDir, path.basename(parentDir), 'directory', parentDir);
-                    this.nodeMap.set(parentDirLower, parentNode);
+                    this.nodeMap.set(parentDirKey, parentNode);
                 }
                 return parentNode;
             }
@@ -928,8 +942,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         }
 
         if (node && node.kind === 'file') {
-            const targetPath = path.normalize(currentPath).toLowerCase();
-            const fileElements = this.elements.filter(e => path.normalize(e.filePath).toLowerCase() === targetPath);
+            const targetPath = normalizePath(currentPath);
+            const fileElements = this.elements.filter(e => normalizePath(e.filePath) === targetPath);
             return fileElements.map(el => {
                 const key = `${el.filePath}:${el.name}:${el.type}`;
                 const elNode = new ExplorerNode(key, el.name, 'element', el.filePath, el);

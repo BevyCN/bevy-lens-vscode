@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -19,6 +19,9 @@
   "icon": "resources/icon.png",
   "activationEvents": [
     "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
   ],
   "main": "./out/extension.js",
   "contributes": {

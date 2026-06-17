@@ -634,6 +634,10 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         this.refresh();
     }
 
+    public getWorkspaceRoot(): string {
+        return this.workspaceRoot;
+    }
+
     private rebuildDiagnosticsCache() {
         this.diagnosticsCache.clear();
         const files = new Set(this.elements.map(e => normalizePath(e.filePath)));
@@ -1014,3 +1018,117 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         }
     }
 }
+
+function copyRecursiveSync(src: string, dest: string) {
+    const exists = fs.existsSync(src);
+    if (!exists) {
+        return;
+    }
+    const stats = fs.statSync(src);
+    const isDirectory = stats.isDirectory();
+    if (isDirectory) {
+        fs.mkdirSync(dest, { recursive: true });
+        fs.readdirSync(src).forEach((childItemName) => {
+            copyRecursiveSync(path.join(src, childItemName), path.join(dest, childItemName));
+        });
+    } else {
+        fs.copyFileSync(src, dest);
+    }
+}
+
+export class BevySemanticExplorerDragAndDropController implements vscode.TreeDragAndDropController<ExplorerNode> {
+    readonly dragMimeTypes = ['text/uri-list'];
+    readonly dropMimeTypes = ['text/uri-list'];
+
+    constructor(private readonly provider: BevySemanticExplorerProvider) {}
+
+    public handleDrag(source: readonly ExplorerNode[], dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): void {
+        const uris = source
+            .filter(node => node.kind === 'file' || node.kind === 'directory')
+            .map(node => vscode.Uri.file(node.fsPath));
+        
+        if (uris.length > 0) {
+            dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uris.map(u => u.toString()).join('\r\n')));
+        }
+    }
+
+    public async handleDrop(target: ExplorerNode | undefined, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
+        const transferItem = dataTransfer.get('text/uri-list');
+        if (!transferItem) {
+            return;
+        }
+
+        const value = await transferItem.asString();
+        if (!value) {
+            return;
+        }
+
+        const uris = value.split(/\r?\n/).filter(Boolean).map(u => vscode.Uri.parse(u));
+        if (uris.length === 0) {
+            return;
+        }
+
+        // 确定目标目录
+        let targetDir: string;
+        if (!target) {
+            targetDir = this.provider.getWorkspaceRoot();
+        } else if (target.kind === 'directory') {
+            targetDir = target.fsPath;
+        } else {
+            targetDir = path.dirname(target.fsPath);
+        }
+
+        if (!targetDir) {
+            return;
+        }
+
+        let hasMoved = false;
+        for (const uri of uris) {
+            const srcPath = uri.fsPath;
+            const destPath = path.join(targetDir, path.basename(srcPath));
+
+            // 如果拖动到同目录，或者拖动到了它自身或其子目录下，需要跳过
+            if (normalizePath(srcPath) === normalizePath(destPath)) {
+                continue;
+            }
+            if (normalizePath(targetDir).startsWith(normalizePath(srcPath) + path.sep)) {
+                vscode.window.showErrorMessage(`Cannot move directory into its own subdirectory`);
+                continue;
+            }
+
+            try {
+                if (fs.existsSync(destPath)) {
+                    const confirm = await vscode.window.showWarningMessage(
+                        `A file or folder named '${path.basename(srcPath)}' already exists in the target directory. Do you want to overwrite it?`,
+                        { modal: true },
+                        'Overwrite'
+                    );
+                    if (confirm !== 'Overwrite') {
+                        continue;
+                    }
+                    fs.rmSync(destPath, { recursive: true, force: true });
+                }
+
+                // 执行移动操作
+                try {
+                    fs.renameSync(srcPath, destPath);
+                } catch (err: any) {
+                    if (err.code === 'EXDEV') {
+                        copyRecursiveSync(srcPath, destPath);
+                        fs.rmSync(srcPath, { recursive: true, force: true });
+                    } else {
+                        throw err;
+                    }
+                }
+                hasMoved = true;
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Failed to move '${path.basename(srcPath)}': ${err.message}`);
+            }
+        }
+
+        if (hasMoved) {
+            await vscode.commands.executeCommand('bevy-lens.refresh');
+        }
+    }
+}
+

@@ -33,11 +33,15 @@ export interface BevyElement {
 }
 
 export class BevyParser {
+    private static parsedFilesCache = new Map<string, BevyElement[]>();
+    private static addSystemsCache = new Map<string, Array<{ phase: string, chainText: string }>>();
+
     /**
      * 递归扫描指定目录下的文件，并提取 Bevy 语义元素
      */
     public static async parseWorkspace(workspaceFolders: readonly vscode.WorkspaceFolder[]): Promise<BevyElement[]> {
-        const elements: BevyElement[] = [];
+        this.parsedFilesCache.clear();
+        this.addSystemsCache.clear();
 
         // 使用 VS Code 优化的 findFiles API，忽略 target, .git, node_modules 等目录
         const filesUris = await vscode.workspace.findFiles(
@@ -50,16 +54,78 @@ export class BevyParser {
         const parsePromises = filesUris.map(async (uri) => {
             const filePath = uri.fsPath;
             const ext = path.extname(filePath);
+            const fileElements: BevyElement[] = [];
             if (ext === '.rs') {
-                await this.parseRustFileAsync(filePath, elements);
+                await this.parseRustFileAsync(filePath, fileElements);
             } else if (ext === '.wgsl' || ext === '.wesl') {
-                await this.parseShaderFileAsync(filePath, elements);
+                await this.parseShaderFileAsync(filePath, fileElements);
             }
+            this.parsedFilesCache.set(filePath, fileElements);
         });
 
         await Promise.all(parsePromises);
 
-        // 辅助缓存：目录 -> crateName
+        return this.assembleElementsFromCache();
+    }
+
+    /**
+     * 增量解析发生变化的文件，合并缓存并返回最新的 BevyElement[]
+     */
+    public static async updateIncremental(uris: readonly vscode.Uri[]): Promise<BevyElement[]> {
+        for (const uri of uris) {
+            const filePath = uri.fsPath;
+            const ext = path.extname(filePath);
+
+            // 如果文件已被删除，从缓存中清理
+            if (!fs.existsSync(filePath)) {
+                this.parsedFilesCache.delete(filePath);
+                this.addSystemsCache.delete(filePath);
+                continue;
+            }
+
+            const fileElements: BevyElement[] = [];
+            if (ext === '.rs') {
+                await this.parseRustFileAsync(filePath, fileElements);
+            } else if (ext === '.wgsl' || ext === '.wesl') {
+                await this.parseShaderFileAsync(filePath, fileElements);
+            }
+            this.parsedFilesCache.set(filePath, fileElements);
+        }
+
+        return this.assembleElementsFromCache();
+    }
+
+    /**
+     * 从静态内存缓存中组装并克隆所有的 BevyElement，消除磁盘 I/O 并进行全局 link 后处理
+     */
+    private static assembleElementsFromCache(): BevyElement[] {
+        const elements: BevyElement[] = [];
+
+        // 1. 深克隆缓存中的元素以防在后处理中修改了缓存的源对象
+        for (const cachedList of this.parsedFilesCache.values()) {
+            for (const el of cachedList) {
+                const cloned: BevyElement = {
+                    ...el,
+                    systemMetadata: el.systemMetadata ? {
+                        ...el.systemMetadata,
+                        belongsToSets: [...el.systemMetadata.belongsToSets],
+                        runConditions: [...el.systemMetadata.runConditions],
+                        runsAfter: [...el.systemMetadata.runsAfter],
+                        runsBefore: [...el.systemMetadata.runsBefore]
+                    } : undefined,
+                    bindGroupMetadata: el.bindGroupMetadata ? {
+                        bindings: el.bindGroupMetadata.bindings.map(b => ({ ...b }))
+                    } : undefined,
+                    shaderMetadata: el.shaderMetadata ? {
+                        bindings: el.shaderMetadata.bindings.map(b => ({ ...b })),
+                        entryPoints: el.shaderMetadata.entryPoints.map(ep => ({ ...ep }))
+                    } : undefined
+                };
+                elements.push(cloned);
+            }
+        }
+
+        // 2. 辅助缓存目录 -> crateName
         const crateCache = new Map<string, string>();
         const getCrateName = (filePath: string): string => {
             let dir = path.dirname(filePath);
@@ -90,30 +156,29 @@ export class BevyParser {
             return 'unknown';
         };
 
-        // 辅助检测构建目标类型：检测路径中是否含有 examples 目录或是 src/bin
         const getSourceTarget = (filePath: string): BevyElement['sourceTarget'] => {
             const normalizedPath = filePath.replace(/\\/g, '/');
             const parts = normalizedPath.split('/');
-            
+
             const examplesIndex = parts.indexOf('examples');
             if (examplesIndex !== -1 && examplesIndex < parts.length - 1) {
                 const subParts = parts.slice(examplesIndex + 1);
-                
+
                 if (subParts.length > 1 && subParts[subParts.length - 1] === 'main.rs') {
                     subParts.pop();
                 }
-                
+
                 if (subParts.length > 0) {
                     const lastIdx = subParts.length - 1;
                     if (subParts[lastIdx].endsWith('.rs')) {
                         subParts[lastIdx] = subParts[lastIdx].replace(/\.rs$/, '');
                     }
                 }
-                
+
                 const exampleName = subParts.join('/');
                 return { type: 'example', name: exampleName };
             }
-            
+
             const srcIndex = parts.indexOf('src');
             if (srcIndex !== -1 && srcIndex < parts.length - 1 && parts[srcIndex + 1] === 'bin') {
                 const subParts = parts.slice(srcIndex + 2);
@@ -133,74 +198,62 @@ export class BevyParser {
             return { type: 'lib' };
         };
 
-        // 填充每个元素的 crateName 与 sourceTarget
         for (const element of elements) {
             element.crateName = getCrateName(element.filePath);
             element.sourceTarget = getSourceTarget(element.filePath);
         }
 
-        // 全局后处理步骤：分析跨文件的 add_systems 调度配置
-        const allFiles = Array.from(new Set(elements.map(e => e.filePath)));
+        // 3. 全局后处理：链接 add_systems (0 I/O 纯内存运行)
         const globalSystems = elements.filter(e => (e.type === 'System' || e.type === 'TestSystem'));
-        
-        const readPromises = allFiles.map(async (filePath) => {
-            if (path.extname(filePath) !== '.rs') return;
-            try {
-                const content = await fs.promises.readFile(filePath, 'utf8');
-                const addSystemsRegex = /\.add_systems\(\s*([A-Za-z0-9_:]+)\s*,\s*([^;]+?)\)/g;
-                let scheduleMatch: RegExpExecArray | null;
-                while ((scheduleMatch = addSystemsRegex.exec(content)) !== null) {
-                    const phase = scheduleMatch[1];
-                    const chainText = scheduleMatch[2];
-                    
-                    for (const system of globalSystems) {
-                        if (chainText.includes(system.name) && system.systemMetadata) {
-                            system.systemMetadata.schedulePhase = phase;
-                            const afterRegex = /\.after\(\s*([A-Za-z0-9_:]+)\s*\)/g;
-                            let specMatch: RegExpExecArray | null;
-                            while ((specMatch = afterRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runsAfter.includes(specMatch[1])) system.systemMetadata.runsAfter.push(specMatch[1]); }
-                            const beforeRegex = /\.before\(\s*([A-Za-z0-9_:]+)\s*\)/g;
-                            while ((specMatch = beforeRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runsBefore.includes(specMatch[1])) system.systemMetadata.runsBefore.push(specMatch[1]); }
-                            const inSetRegex = /\.in_set\(\s*([A-Za-z0-9_:]+)\s*\)/g;
-                            while ((specMatch = inSetRegex.exec(chainText)) !== null) { if (!system.systemMetadata.belongsToSets.includes(specMatch[1])) system.systemMetadata.belongsToSets.push(specMatch[1]); }
-                            const runIfRegex = /\.run_if\(\s*([^)]+)\)/g;
-                            while ((specMatch = runIfRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runConditions.includes(specMatch[1])) system.systemMetadata.runConditions.push(specMatch[1]); }
-                        }
+
+        for (const addSystemsList of this.addSystemsCache.values()) {
+            for (const item of addSystemsList) {
+                const phase = item.phase;
+                const chainText = item.chainText;
+
+                for (const system of globalSystems) {
+                    if (chainText.includes(system.name) && system.systemMetadata) {
+                        system.systemMetadata.schedulePhase = phase;
+                        const afterRegex = /\.after\(\s*([A-Za-z0-9_:]+)\s*\)/g;
+                        let specMatch: RegExpExecArray | null;
+                        while ((specMatch = afterRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runsAfter.includes(specMatch[1])) system.systemMetadata.runsAfter.push(specMatch[1]); }
+                        const beforeRegex = /\.before\(\s*([A-Za-z0-9_:]+)\s*\)/g;
+                        while ((specMatch = beforeRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runsBefore.includes(specMatch[1])) system.systemMetadata.runsBefore.push(specMatch[1]); }
+                        const inSetRegex = /\.in_set\(\s*([A-Za-z0-9_:]+)\s*\)/g;
+                        while ((specMatch = inSetRegex.exec(chainText)) !== null) { if (!system.systemMetadata.belongsToSets.includes(specMatch[1])) system.systemMetadata.belongsToSets.push(specMatch[1]); }
+                        const runIfRegex = /\.run_if\(\s*([^)]+)\)/g;
+                        while ((specMatch = runIfRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runConditions.includes(specMatch[1])) system.systemMetadata.runConditions.push(specMatch[1]); }
                     }
+                }
 
-                    // 解析 chain() 并生成系统间的串行 runsBefore/runsAfter 关系
-                    if (chainText.includes('.chain(')) {
-                        const chainRegex = /\(\s*([A-Za-z0-9_,\s\n\r:]+)\s*\)\s*\.chain\(\)/g;
-                        let chainMatch: RegExpExecArray | null;
-                        while ((chainMatch = chainRegex.exec(chainText)) !== null) {
-                            const rawNames = chainMatch[1].split(',').map(s => s.trim()).filter(s => s.length > 0);
-                            const sysNames = rawNames.map(name => name.split('::').pop() || name);
-                            for (let idx = 1; idx < sysNames.length; idx++) {
-                                const prevSysName = sysNames[idx - 1];
-                                const currentSysName = sysNames[idx];
+                if (chainText.includes('.chain(')) {
+                    const chainRegex = /\(\s*([A-Za-z0-9_,\s\n\r:]+)\s*\)\s*\.chain\(\)/g;
+                    let chainMatch: RegExpExecArray | null;
+                    while ((chainMatch = chainRegex.exec(chainText)) !== null) {
+                        const rawNames = chainMatch[1].split(',').map(s => s.trim()).filter(s => s.length > 0);
+                        const sysNames = rawNames.map(name => name.split('::').pop() || name);
+                        for (let idx = 1; idx < sysNames.length; idx++) {
+                            const prevSysName = sysNames[idx - 1];
+                            const currentSysName = sysNames[idx];
 
-                                const currentSys = globalSystems.find(s => s.name === currentSysName);
-                                if (currentSys && currentSys.systemMetadata) {
-                                    if (!currentSys.systemMetadata.runsAfter.includes(prevSysName)) {
-                                        currentSys.systemMetadata.runsAfter.push(prevSysName);
-                                    }
+                            const currentSys = globalSystems.find(s => s.name === currentSysName);
+                            if (currentSys && currentSys.systemMetadata) {
+                                if (!currentSys.systemMetadata.runsAfter.includes(prevSysName)) {
+                                    currentSys.systemMetadata.runsAfter.push(prevSysName);
                                 }
+                            }
 
-                                const prevSys = globalSystems.find(s => s.name === prevSysName);
-                                if (prevSys && prevSys.systemMetadata) {
-                                    if (!prevSys.systemMetadata.runsBefore.includes(currentSysName)) {
-                                        prevSys.systemMetadata.runsBefore.push(currentSysName);
-                                    }
+                            const prevSys = globalSystems.find(s => s.name === prevSysName);
+                            if (prevSys && prevSys.systemMetadata) {
+                                if (!prevSys.systemMetadata.runsBefore.includes(currentSysName)) {
+                                    prevSys.systemMetadata.runsBefore.push(currentSysName);
                                 }
                             }
                         }
                     }
                 }
-            } catch (err) {
-                console.error('Failed to perform global link step for file:', filePath, err);
             }
-        });
-        await Promise.all(readPromises);
+        }
 
         return elements;
     }
@@ -480,6 +533,18 @@ export class BevyParser {
                 }
             }
         }
+
+        // 顺便提取并缓存此文件内的 add_systems 调度配置，减少后续重复的磁盘读取
+        const addSystems: Array<{ phase: string, chainText: string }> = [];
+        const addSystemsRegex = /\.add_systems\(\s*([A-Za-z0-9_:]+)\s*,\s*([^;]+?)\)/g;
+        let scheduleMatch: RegExpExecArray | null;
+        while ((scheduleMatch = addSystemsRegex.exec(content)) !== null) {
+            addSystems.push({
+                phase: scheduleMatch[1],
+                chainText: scheduleMatch[2]
+            });
+        }
+        this.addSystemsCache.set(filePath, addSystems);
     }
 
     /**

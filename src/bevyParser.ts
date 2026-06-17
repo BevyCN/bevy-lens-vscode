@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 
 export interface BevyElement {
     name: string;
-    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet';
+    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver';
     filePath: string;
     crateName?: string; // 所属的 Crate 名称
     sourceTarget?: { type: 'lib' | 'bin' | 'example'; name?: string }; // Rust 构建目标类型与名字
@@ -448,7 +448,10 @@ export class BevyParser {
                         if (lines[j].includes('{') || lines[j].includes(')')) break;
                     }
 
+                    const isObserver = /\(\s*(?:mut\s+)?(?:[A-Za-z0-9_]+)\s*:\s*On\s*</.test(fullSignature);
+
                     const hasBevyParams = 
+                        isObserver ||
                         fullSignature.includes('Query<') || 
                         fullSignature.includes('Res<') || 
                         fullSignature.includes('ResMut<') || 
@@ -482,14 +485,17 @@ export class BevyParser {
                         }
 
                         const { docstring, firstLine } = getDocstring(i);
-                        const type = inTestModule ? 'TestSystem' : 'System';
+                        const type = isObserver 
+                            ? (inTestModule ? 'TestObserver' : 'Observer') 
+                            : (inTestModule ? 'TestSystem' : 'System');
+
                         elements.push({
                             name: fnName,
                             type: type,
                             filePath,
                             line: i + 1,
                             description: firstLine || `${type} function`,
-                            docstring: docstring || `Bevy system: ${fnName}\nSignature: \`${fullSignature.trim().replace(/\s+/g, ' ')}\``,
+                            docstring: docstring || `Bevy ${isObserver ? 'observer' : 'system'}: ${fnName}\nSignature: \`${fullSignature.trim().replace(/\s+/g, ' ')}\``,
                             systemMetadata: {
                                 mutableResources, readableResources, mutableComponents, readableComponents,
                                 belongsToSets: [], runConditions: [], runsAfter: [], runsBefore: []

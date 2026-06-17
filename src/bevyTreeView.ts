@@ -38,25 +38,31 @@ function buildElementTooltip(element: BevyElement, elementErrors: vscode.Diagnos
     markdown.appendMarkdown(`### **${element.name}** \`[${element.type}]\`${errorTag}\n\n`);
     markdown.appendMarkdown(`* **File**: \`${path.basename(element.filePath)}\` (Line ${element.line})\n\n`);
 
-    // System 调度与访问分析展示
-    if (element.type === 'System' && element.systemMetadata) {
+    // System 与 Observer 调度与访问分析展示
+    if ((element.type === 'System' || element.type === 'TestSystem' || element.type === 'Observer' || element.type === 'TestObserver') && element.systemMetadata) {
         const meta = element.systemMetadata;
         markdown.appendMarkdown(`---\n\n`);
-        markdown.appendMarkdown(`#### ⚙️ **System Schedule & Bounds**\n`);
-        if (meta.schedulePhase) {
-            markdown.appendMarkdown(`* **Stage**: \`${meta.schedulePhase}\`\n`);
-        }
-        if (meta.belongsToSets.length > 0) {
-            markdown.appendMarkdown(`* **SystemSets**: ${meta.belongsToSets.map(s => `\`${s}\``).join(', ')}\n`);
-        }
-        if (meta.runsAfter.length > 0) {
-            markdown.appendMarkdown(`* **After**: ${meta.runsAfter.map(s => `\`${s}\``).join(', ')}\n`);
-        }
-        if (meta.runsBefore.length > 0) {
-            markdown.appendMarkdown(`* **Before**: ${meta.runsBefore.map(s => `\`${s}\``).join(', ')}\n`);
-        }
-        if (meta.runConditions.length > 0) {
-            markdown.appendMarkdown(`* **Run Conditions**: \`${meta.runConditions.join(' && ')}\`\n`);
+        
+        if (element.type === 'Observer' || element.type === 'TestObserver') {
+            markdown.appendMarkdown(`#### 🔔 **Observer Trigger**\n`);
+            markdown.appendMarkdown(`* **Trigger Type**: Event-driven Observer\n`);
+        } else {
+            markdown.appendMarkdown(`#### ⚙️ **System Schedule & Bounds**\n`);
+            if (meta.schedulePhase) {
+                markdown.appendMarkdown(`* **Stage**: \`${meta.schedulePhase}\`\n`);
+            }
+            if (meta.belongsToSets.length > 0) {
+                markdown.appendMarkdown(`* **SystemSets**: ${meta.belongsToSets.map(s => `\`${s}\``).join(', ')}\n`);
+            }
+            if (meta.runsAfter.length > 0) {
+                markdown.appendMarkdown(`* **After**: ${meta.runsAfter.map(s => `\`${s}\``).join(', ')}\n`);
+            }
+            if (meta.runsBefore.length > 0) {
+                markdown.appendMarkdown(`* **Before**: ${meta.runsBefore.map(s => `\`${s}\``).join(', ')}\n`);
+            }
+            if (meta.runConditions.length > 0) {
+                markdown.appendMarkdown(`* **Run Conditions**: \`${meta.runConditions.join(' && ')}\`\n`);
+            }
         }
 
         markdown.appendMarkdown(`\n#### 📊 **Data Access**\n`);
@@ -409,10 +415,12 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 new RegistryCategory('Shaders', 'Shader', 'paintcan'),
                 new RegistryCategory('Assets', 'Asset', 'package'),
                 new RegistryCategory('Systems', 'System', 'gear'),
+                new RegistryCategory('Observers', 'Observer', 'eye'),
                 // 新增测试分类
                 new RegistryCategory('Test Systems', 'TestSystem', 'beaker'),
                 new RegistryCategory('Test ECS Types', 'TestComponent', 'package'),
-                new RegistryCategory('Test Logic & Bounds', 'TestEvent', 'pulse')
+                new RegistryCategory('Test Logic & Bounds', 'TestEvent', 'pulse'),
+                new RegistryCategory('Test Observers', 'TestObserver', 'eye')
             ];
         }
 
@@ -574,6 +582,8 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             case 'Shader': return new vscode.ThemeIcon('paintcan', new vscode.ThemeColor('charts.red'));
             case 'Asset': return new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.foreground'));
             case 'System': return new vscode.ThemeIcon('gear', new vscode.ThemeColor('debugIcon.startForeground'));
+            case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
+            case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));
         }
     }
@@ -1014,6 +1024,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             case 'Shader': return new vscode.ThemeIcon('paintcan', new vscode.ThemeColor('charts.red'));
             case 'Asset': return new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.foreground'));
             case 'System': return new vscode.ThemeIcon('gear', new vscode.ThemeColor('debugIcon.startForeground'));
+            case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
+            case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));
         }
     }

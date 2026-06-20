@@ -307,9 +307,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // 自动高亮并定位当前编辑的文件节点
     const revealActiveEditor = () => {
-        if (!explorerTreeView.visible) {
-            return;
-        }
 
         const editor = vscode.window.activeTextEditor;
         if (!editor) { return; }

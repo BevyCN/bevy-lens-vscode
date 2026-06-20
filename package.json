@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.21",
+  "version": "0.1.25",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -192,17 +192,17 @@
       "view/item/context": [
         {
           "command": "bevy-lens.explorer.newFile",
-          "when": "view == bevySemanticExplorer && viewItem == directory",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || !viewItem)",
           "group": "1_new@1"
         },
         {
           "command": "bevy-lens.explorer.newFileFromTemplate",
-          "when": "view == bevySemanticExplorer && viewItem == directory",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || !viewItem)",
           "group": "1_new@2"
         },
         {
           "command": "bevy-lens.explorer.newFolder",
-          "when": "view == bevySemanticExplorer && viewItem == directory",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || !viewItem)",
           "group": "1_new@3"
         },
         {
@@ -232,7 +232,7 @@
         },
         {
           "command": "bevy-lens.explorer.openInTerminal",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file || !viewItem)",
           "group": "0_open@3"
         },
         {
@@ -247,7 +247,7 @@
         },
         {
           "command": "bevy-lens.explorer.paste",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file) && bevyLens.clipboardHasData",
+          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file || !viewItem) && bevyLens.clipboardHasData",
           "group": "5_clipboard@3"
         },
         {

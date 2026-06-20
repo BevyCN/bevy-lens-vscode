@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 
 export interface BevyElement {
     name: string;
-    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver';
+    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver' | 'MainSystem' | 'RenderSystem' | 'TestMainSystem' | 'TestRenderSystem' | 'BSN' | 'TestBSN' | 'AppSettings' | 'TestAppSettings';
     filePath: string;
     crateName?: string; // 所属的 Crate 名称
     sourceTarget?: { type: 'lib' | 'bin' | 'example'; name?: string }; // Rust 构建目标类型与名字
@@ -34,7 +34,8 @@ export interface BevyElement {
 
 export class BevyParser {
     private static parsedFilesCache = new Map<string, BevyElement[]>();
-    private static addSystemsCache = new Map<string, Array<{ phase: string, chainText: string }>>();
+    private static addSystemsCache = new Map<string, Array<{ appName: string, phase: string, chainText: string, isRenderWorld: boolean }>>();
+    private static addObserversCache = new Map<string, Array<{ chainText: string }>>();
 
     /**
      * 递归扫描指定目录下的文件，并提取 Bevy 语义元素
@@ -42,6 +43,7 @@ export class BevyParser {
     public static async parseWorkspace(workspaceFolders: readonly vscode.WorkspaceFolder[]): Promise<BevyElement[]> {
         this.parsedFilesCache.clear();
         this.addSystemsCache.clear();
+        this.addObserversCache.clear();
 
         // 使用 VS Code 优化的 findFiles API，忽略 target, .git, node_modules 等目录
         const filesUris = await vscode.workspace.findFiles(
@@ -80,6 +82,7 @@ export class BevyParser {
             if (!fs.existsSync(filePath)) {
                 this.parsedFilesCache.delete(filePath);
                 this.addSystemsCache.delete(filePath);
+                this.addObserversCache.delete(filePath);
                 continue;
             }
 
@@ -204,7 +207,7 @@ export class BevyParser {
         }
 
         // 3. 全局后处理：链接 add_systems (0 I/O 纯内存运行)
-        const globalSystems = elements.filter(e => (e.type === 'System' || e.type === 'TestSystem'));
+        const globalSystems = elements.filter(e => (e.type === 'System' || e.type === 'TestSystem' || e.type === 'MainSystem' || e.type === 'TestMainSystem' || e.type === 'RenderSystem' || e.type === 'TestRenderSystem'));
 
         for (const addSystemsList of this.addSystemsCache.values()) {
             for (const item of addSystemsList) {
@@ -214,6 +217,16 @@ export class BevyParser {
                 for (const system of globalSystems) {
                     if (chainText.includes(system.name) && system.systemMetadata) {
                         system.systemMetadata.schedulePhase = phase;
+
+                        // 渲染世界系统类型修正
+                        if (item.isRenderWorld) {
+                            if (system.type === 'MainSystem') {
+                                system.type = 'RenderSystem';
+                            } else if (system.type === 'TestMainSystem') {
+                                system.type = 'TestRenderSystem';
+                            }
+                        }
+
                         const afterRegex = /\.after\(\s*([A-Za-z0-9_:]+)\s*\)/g;
                         let specMatch: RegExpExecArray | null;
                         while ((specMatch = afterRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runsAfter.includes(specMatch[1])) system.systemMetadata.runsAfter.push(specMatch[1]); }
@@ -255,6 +268,25 @@ export class BevyParser {
             }
         }
 
+        // 4. 全局后处理：链接 add_observer 并提取 run_if 条件
+        const globalObservers = elements.filter(e => (e.type === 'Observer' || e.type === 'TestObserver'));
+        for (const addObserversList of this.addObserversCache.values()) {
+            for (const item of addObserversList) {
+                const chainText = item.chainText;
+                for (const observer of globalObservers) {
+                    if (chainText.includes(observer.name) && observer.systemMetadata) {
+                        const runIfRegex = /\.run_if\(\s*([^)]+)\)/g;
+                        let specMatch: RegExpExecArray | null;
+                        while ((specMatch = runIfRegex.exec(chainText)) !== null) {
+                            if (!observer.systemMetadata.runConditions.includes(specMatch[1])) {
+                                observer.systemMetadata.runConditions.push(specMatch[1]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return elements;
     }
 
@@ -270,6 +302,33 @@ export class BevyParser {
         }
 
         const lines = content.split(/\r?\n/);
+        
+        // 1. 扫描 RenderApp 子 App 变量定义
+        const renderAppVars = new Set<string>();
+        const subAppRegex = /let\s+Ok\(\s*([A-Za-z0-9_]+)\s*\)\s*=\s*[A-Za-z0-9_]+\.(?:get_)?sub_app_mut\(\s*RenderApp\s*\)/g;
+        let subAppMatch;
+        while ((subAppMatch = subAppRegex.exec(content)) !== null) {
+            renderAppVars.add(subAppMatch[1]);
+        }
+
+        // 2. 扫描 BSN / BSN List 宏定义，并向上寻找最近的 fn 绑定
+        const bsnFunctions = new Set<string>();
+        const bsnRegex = /(?:bsn!|bsn_list!)/g;
+        let bsnMatch;
+        while ((bsnMatch = bsnRegex.exec(content)) !== null) {
+            const index = bsnMatch.index;
+            const beforeContent = content.substring(0, index);
+            const lineIndex = beforeContent.split('\n').length - 1;
+            
+            for (let k = lineIndex; k >= 0; k--) {
+                const kLine = lines[k];
+                const fnMatch = kLine.match(/(?:pub\s+)?fn\s+([A-Za-z0-9_]+)\s*\(/);
+                if (fnMatch) {
+                    bsnFunctions.add(fnMatch[1]);
+                    break;
+                }
+            }
+        }
         
         // 提取文档注释的辅助函数
         const getDocstring = (startLineIndex: number): { docstring: string, firstLine: string } => {
@@ -392,10 +451,22 @@ export class BevyParser {
                             }
                         }
 
+                        let hasSettingsGroup = false;
+                        for (let m = i; m <= nextStructLine; m++) {
+                            if (lines[m].includes('SettingsGroup')) {
+                                hasSettingsGroup = true;
+                                break;
+                            }
+                        }
+
                         for (const derive of derives) {
                             let type: BevyElement['type'] | null = null;
                             if (derive === 'Component') { type = inTestModule ? 'TestComponent' : 'Component'; }
-                            else if (derive === 'Resource') { type = inTestModule ? 'TestResource' : 'Resource'; }
+                            else if (derive === 'Resource') {
+                                type = hasSettingsGroup
+                                    ? (inTestModule ? 'TestAppSettings' : 'AppSettings')
+                                    : (inTestModule ? 'TestResource' : 'Resource');
+                            }
                             else if (derive === 'Event') { type = inTestModule ? 'TestEvent' : 'Event'; }
                             else if (derive === 'Asset') { type = 'Asset'; }
                             else if (derive === 'States') { type = 'State'; }
@@ -437,11 +508,27 @@ export class BevyParser {
                 }
             }
 
-            // 3. 解析 System
+            // 3. 解析 System 和 BSN
             if (lineContent.trim().startsWith('pub fn ') || lineContent.trim().startsWith('fn ')) {
                 const fnMatch = lineContent.match(/(?:pub\s+)?fn\s+([A-Za-z0-9_]+)\s*\(/);
                 if (fnMatch) {
                     const fnName = fnMatch[1];
+
+                    // 优先检查是否为 BSN 宏关联函数
+                    if (bsnFunctions.has(fnName)) {
+                        const { docstring, firstLine } = getDocstring(i);
+                        const type = inTestModule ? 'TestBSN' : 'BSN';
+                        elements.push({
+                            name: fnName,
+                            type: type,
+                            filePath,
+                            line: i + 1,
+                            description: firstLine || 'BSN Scene definition',
+                            docstring: docstring || `BSN Scene: ${fnName}`
+                        });
+                        continue;
+                    }
+
                     let fullSignature = '';
                     for (let j = i; j < Math.min(lines.length, i + 10); j++) {
                         fullSignature += ' ' + lines[j].trim();
@@ -487,7 +574,7 @@ export class BevyParser {
                         const { docstring, firstLine } = getDocstring(i);
                         const type = isObserver 
                             ? (inTestModule ? 'TestObserver' : 'Observer') 
-                            : (inTestModule ? 'TestSystem' : 'System');
+                            : (inTestModule ? 'TestMainSystem' : 'MainSystem');
 
                         elements.push({
                             name: fnName,
@@ -540,17 +627,53 @@ export class BevyParser {
             }
         }
 
-        // 顺便提取并缓存此文件内的 add_systems 调度配置，减少后续重复的磁盘读取
-        const addSystems: Array<{ phase: string, chainText: string }> = [];
+        // 顺便提取并缓存此文件内的 add_systems 与 add_observer 调度配置，减少后续重复的磁盘读取
+        const addSystems: Array<{ appName: string, phase: string, chainText: string, isRenderWorld: boolean }> = [];
         const addSystemsRegex = /\.add_systems\(\s*([A-Za-z0-9_:]+)\s*,\s*([^;]+?)\)/g;
         let scheduleMatch: RegExpExecArray | null;
         while ((scheduleMatch = addSystemsRegex.exec(content)) !== null) {
+            const beforeContent = content.substring(0, scheduleMatch.index);
+            const lastStmtTerminator = Math.max(
+                beforeContent.lastIndexOf(';'),
+                beforeContent.lastIndexOf('{'),
+                beforeContent.lastIndexOf('}')
+            );
+            const stmtPrefix = lastStmtTerminator !== -1 
+                ? beforeContent.substring(lastStmtTerminator + 1) 
+                : beforeContent;
+
+            const appNameMatch = stmtPrefix.trim().match(/^([A-Za-z0-9_]+)/);
+            const appName = appNameMatch ? appNameMatch[1] : '';
+
+            let isRenderWorld = stmtPrefix.includes('RenderApp');
+            if (!isRenderWorld) {
+                for (const renderVar of renderAppVars) {
+                    const varWordRegex = new RegExp(`\\b${renderVar}\\b`);
+                    if (varWordRegex.test(stmtPrefix)) {
+                        isRenderWorld = true;
+                        break;
+                    }
+                }
+            }
+
             addSystems.push({
+                appName,
                 phase: scheduleMatch[1],
-                chainText: scheduleMatch[2]
+                chainText: scheduleMatch[2],
+                isRenderWorld
             });
         }
         this.addSystemsCache.set(filePath, addSystems);
+
+        const addObservers: Array<{ chainText: string }> = [];
+        const addObserverRegex = /\.add_observer\(\s*([^;]+?)\)/g;
+        let observerMatch: RegExpExecArray | null;
+        while ((observerMatch = addObserverRegex.exec(content)) !== null) {
+            addObservers.push({
+                chainText: observerMatch[1]
+            });
+        }
+        this.addObserversCache.set(filePath, addObservers);
     }
 
     /**

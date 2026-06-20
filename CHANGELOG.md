@@ -2,6 +2,29 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.25] - 2026-06-20
+
+### Fixed
+- **Render World Systems Resolution**: Upgraded `add_systems` registration parser to utilize statement prefix backtracking, resolving and identifying Render World Systems declared via chain calls like `app.sub_app_mut(RenderApp).add_systems(...)` and `sub_app_mut` methods.
+
+## [0.1.24] - 2026-06-20
+
+### Optimized
+- **Registry Category Sorting**: Sorted registry categories alphabetically (A-Z) while consistently placing all categories with a "Test" prefix at the bottom.
+
+## [0.1.23] - 2026-06-20
+
+### Added
+- **Render & Main World Systems Separation**: Differentiated systems added to `RenderApp` from standard systems, registering them as "Render World Systems" and "Main World Systems" in tree views.
+- **BSN Macro Detection**: Added support for detecting `bsn!` and `bsn_list!` syntax macros and mapping their enclosing Scene functions under the "BSN" category in tree views with a custom symbol icon.
+- **App Settings Flow**: Automatically relocated resources marked with `SettingsGroup` (via derive or reflect attributes) from "Resources" to a dedicated "App Settings" registry section.
+- **Observer run_if Support**: Integrated `.run_if(...)` condition analysis for Bevy observers, displaying execution guard conditions in observer hover tooltips.
+
+## [0.1.22] - 2026-06-20
+
+### Fixed
+- **Explorer Empty Context Menu**: Enabled context menu operations (New File, New File from Template, New Folder, Paste, and Open in Integrated Terminal) when right-clicking on empty spaces in the Bevy Semantic Explorer, resolving workspace actions relative to the root directory path.
+
 ## [0.1.21] - 2026-06-17
 
 ### Added

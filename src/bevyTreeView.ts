@@ -39,13 +39,16 @@ function buildElementTooltip(element: BevyElement, elementErrors: vscode.Diagnos
     markdown.appendMarkdown(`* **File**: \`${path.basename(element.filePath)}\` (Line ${element.line})\n\n`);
 
     // System 与 Observer 调度与访问分析展示
-    if ((element.type === 'System' || element.type === 'TestSystem' || element.type === 'Observer' || element.type === 'TestObserver') && element.systemMetadata) {
+    if ((element.type === 'System' || element.type === 'TestSystem' || element.type === 'MainSystem' || element.type === 'TestMainSystem' || element.type === 'RenderSystem' || element.type === 'TestRenderSystem' || element.type === 'Observer' || element.type === 'TestObserver') && element.systemMetadata) {
         const meta = element.systemMetadata;
         markdown.appendMarkdown(`---\n\n`);
         
         if (element.type === 'Observer' || element.type === 'TestObserver') {
             markdown.appendMarkdown(`#### 🔔 **Observer Trigger**\n`);
             markdown.appendMarkdown(`* **Trigger Type**: Event-driven Observer\n`);
+            if (meta.runConditions.length > 0) {
+                markdown.appendMarkdown(`* **Run Conditions**: \`${meta.runConditions.join(' && ')}\`\n`);
+            }
         } else {
             markdown.appendMarkdown(`#### ⚙️ **System Schedule & Bounds**\n`);
             if (meta.schedulePhase) {
@@ -402,10 +405,11 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     getChildren(element?: RegistryNode): vscode.ProviderResult<RegistryNode[]> {
         if (!element) {
             // 根分类节点
-            return [
+            const categories = [
                 new RegistryCategory('Components', 'Component', 'symbol-structure'),
                 new RegistryCategory('Bundles', 'Bundle', 'library'),
                 new RegistryCategory('Resources', 'Resource', 'database'),
+                new RegistryCategory('App Settings', 'AppSettings', 'settings'),
                 new RegistryCategory('Events', 'Event', 'zap'),
                 new RegistryCategory('States', 'State', 'symbol-enum'),
                 new RegistryCategory('System Params', 'SystemParam', 'list-unordered'),
@@ -414,14 +418,29 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 new RegistryCategory('Plugins', 'Plugin', 'plug'),
                 new RegistryCategory('Shaders', 'Shader', 'paintcan'),
                 new RegistryCategory('Assets', 'Asset', 'package'),
-                new RegistryCategory('Systems', 'System', 'gear'),
+                new RegistryCategory('Main World Systems', 'MainSystem', 'gear'),
+                new RegistryCategory('Render World Systems', 'RenderSystem', 'server-process'),
                 new RegistryCategory('Observers', 'Observer', 'eye'),
+                new RegistryCategory('BSN', 'BSN', 'symbol-interface'),
                 // 新增测试分类
-                new RegistryCategory('Test Systems', 'TestSystem', 'beaker'),
+                new RegistryCategory('Test Main World Systems', 'TestMainSystem', 'beaker'),
+                new RegistryCategory('Test Render World Systems', 'TestRenderSystem', 'server-process'),
+                new RegistryCategory('Test Observers', 'TestObserver', 'eye'),
+                new RegistryCategory('Test BSN', 'TestBSN', 'symbol-interface'),
+                new RegistryCategory('Test App Settings', 'TestAppSettings', 'settings'),
                 new RegistryCategory('Test ECS Types', 'TestComponent', 'package'),
                 new RegistryCategory('Test Logic & Bounds', 'TestEvent', 'pulse'),
-                new RegistryCategory('Test Observers', 'TestObserver', 'eye')
+                new RegistryCategory('Systems', 'System', 'gear'),
+                new RegistryCategory('Test Systems', 'TestSystem', 'beaker')
             ];
+            categories.sort((a, b) => {
+                const aIsTest = a.label.startsWith('Test');
+                const bIsTest = b.label.startsWith('Test');
+                if (aIsTest && !bIsTest) return 1;
+                if (!aIsTest && bIsTest) return -1;
+                return a.label.localeCompare(b.label);
+            });
+            return categories;
         }
 
         if (element instanceof RegistryCategory) {
@@ -566,6 +585,8 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             case 'Component': return new vscode.ThemeIcon('symbol-structure', new vscode.ThemeColor('charts.green'));
             case 'Bundle': return new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.green'));
             case 'Resource': return new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.blue'));
+            case 'AppSettings': return new vscode.ThemeIcon('settings', new vscode.ThemeColor('charts.purple'));
+            case 'TestAppSettings': return new vscode.ThemeIcon('settings', new vscode.ThemeColor('charts.yellow'));
             case 'Event': return new vscode.ThemeIcon('zap', new vscode.ThemeColor('charts.orange'));
             case 'State': return new vscode.ThemeIcon('symbol-enum', new vscode.ThemeColor('charts.purple'));
             case 'SystemParam': return new vscode.ThemeIcon('list-unordered', new vscode.ThemeColor('charts.blue'));
@@ -582,6 +603,12 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             case 'Shader': return new vscode.ThemeIcon('paintcan', new vscode.ThemeColor('charts.red'));
             case 'Asset': return new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.foreground'));
             case 'System': return new vscode.ThemeIcon('gear', new vscode.ThemeColor('debugIcon.startForeground'));
+            case 'MainSystem': return new vscode.ThemeIcon('gear', new vscode.ThemeColor('debugIcon.startForeground'));
+            case 'TestMainSystem': return new vscode.ThemeIcon('beaker', new vscode.ThemeColor('charts.purple'));
+            case 'RenderSystem': return new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.red'));
+            case 'TestRenderSystem': return new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.yellow'));
+            case 'BSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.green'));
+            case 'TestBSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.yellow'));
             case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
             case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));
@@ -1008,6 +1035,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             case 'Component': return new vscode.ThemeIcon('symbol-structure', new vscode.ThemeColor('charts.green'));
             case 'Bundle': return new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.green'));
             case 'Resource': return new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.blue'));
+            case 'AppSettings': return new vscode.ThemeIcon('settings', new vscode.ThemeColor('charts.purple'));
+            case 'TestAppSettings': return new vscode.ThemeIcon('settings', new vscode.ThemeColor('charts.yellow'));
             case 'Event': return new vscode.ThemeIcon('zap', new vscode.ThemeColor('charts.orange'));
             case 'State': return new vscode.ThemeIcon('symbol-enum', new vscode.ThemeColor('charts.purple'));
             case 'SystemParam': return new vscode.ThemeIcon('list-unordered', new vscode.ThemeColor('charts.blue'));
@@ -1024,6 +1053,12 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             case 'Shader': return new vscode.ThemeIcon('paintcan', new vscode.ThemeColor('charts.red'));
             case 'Asset': return new vscode.ThemeIcon('package', new vscode.ThemeColor('charts.foreground'));
             case 'System': return new vscode.ThemeIcon('gear', new vscode.ThemeColor('debugIcon.startForeground'));
+            case 'MainSystem': return new vscode.ThemeIcon('gear', new vscode.ThemeColor('debugIcon.startForeground'));
+            case 'TestMainSystem': return new vscode.ThemeIcon('beaker', new vscode.ThemeColor('charts.purple'));
+            case 'RenderSystem': return new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.red'));
+            case 'TestRenderSystem': return new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.yellow'));
+            case 'BSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.green'));
+            case 'TestBSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.yellow'));
             case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
             case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));

@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 
 export interface BevyElement {
     name: string;
-    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver' | 'MainSystem' | 'RenderSystem' | 'TestMainSystem' | 'TestRenderSystem' | 'BSN' | 'TestBSN' | 'AppSettings' | 'TestAppSettings';
+    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver' | 'MainSystem' | 'RenderSystem' | 'TestMainSystem' | 'TestRenderSystem' | 'BSN' | 'TestBSN' | 'BSNList' | 'TestBSNList' | 'AppSettings' | 'TestAppSettings';
     filePath: string;
     crateName?: string; // 所属的 Crate 名称
     sourceTarget?: { type: 'lib' | 'bin' | 'example'; name?: string }; // Rust 构建目标类型与名字
@@ -312,19 +312,36 @@ export class BevyParser {
         }
 
         // 2. 扫描 BSN / BSN List 宏定义，并向上寻找最近的 fn 绑定
-        const bsnFunctions = new Set<string>();
-        const bsnRegex = /(?:bsn!|bsn_list!)/g;
+        const bsnFunctions = new Map<string, 'bsn' | 'bsn_list'>();
+        const bsnListRegex = /\bbsn_list!/g;
+        let bsnListMatch;
+        while ((bsnListMatch = bsnListRegex.exec(content)) !== null) {
+            const index = bsnListMatch.index;
+            const beforeContent = content.substring(0, index);
+            const lineIndex = beforeContent.split('\n').length - 1;
+            for (let k = lineIndex; k >= 0; k--) {
+                const kLine = lines[k];
+                const fnMatch = kLine.match(/(?:pub\s+)?fn\s+([A-Za-z0-9_]+)\s*\(/);
+                if (fnMatch) {
+                    bsnFunctions.set(fnMatch[1], 'bsn_list');
+                    break;
+                }
+            }
+        }
+
+        const bsnRegex = /\bbsn!/g;
         let bsnMatch;
         while ((bsnMatch = bsnRegex.exec(content)) !== null) {
             const index = bsnMatch.index;
             const beforeContent = content.substring(0, index);
             const lineIndex = beforeContent.split('\n').length - 1;
-            
             for (let k = lineIndex; k >= 0; k--) {
                 const kLine = lines[k];
                 const fnMatch = kLine.match(/(?:pub\s+)?fn\s+([A-Za-z0-9_]+)\s*\(/);
                 if (fnMatch) {
-                    bsnFunctions.add(fnMatch[1]);
+                    if (!bsnFunctions.has(fnMatch[1])) {
+                        bsnFunctions.set(fnMatch[1], 'bsn');
+                    }
                     break;
                 }
             }
@@ -516,15 +533,21 @@ export class BevyParser {
 
                     // 优先检查是否为 BSN 宏关联函数
                     if (bsnFunctions.has(fnName)) {
+                        const macroType = bsnFunctions.get(fnName);
                         const { docstring, firstLine } = getDocstring(i);
-                        const type = inTestModule ? 'TestBSN' : 'BSN';
+                        let type: BevyElement['type'];
+                        if (macroType === 'bsn_list') {
+                            type = inTestModule ? 'TestBSNList' : 'BSNList';
+                        } else {
+                            type = inTestModule ? 'TestBSN' : 'BSN';
+                        }
                         elements.push({
                             name: fnName,
                             type: type,
                             filePath,
                             line: i + 1,
-                            description: firstLine || 'BSN Scene definition',
-                            docstring: docstring || `BSN Scene: ${fnName}`
+                            description: firstLine || `${macroType === 'bsn_list' ? 'BSN List' : 'BSN'} Scene definition`,
+                            docstring: docstring || `${macroType === 'bsn_list' ? 'BSN List' : 'BSN'} Scene: ${fnName}`
                         });
                         continue;
                     }

@@ -422,11 +422,13 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 new RegistryCategory('Render World Systems', 'RenderSystem', 'server-process'),
                 new RegistryCategory('Observers', 'Observer', 'eye'),
                 new RegistryCategory('BSN', 'BSN', 'symbol-interface'),
+                new RegistryCategory('BSN List', 'BSNList', 'symbol-method'),
                 // 新增测试分类
                 new RegistryCategory('Test Main World Systems', 'TestMainSystem', 'beaker'),
                 new RegistryCategory('Test Render World Systems', 'TestRenderSystem', 'server-process'),
                 new RegistryCategory('Test Observers', 'TestObserver', 'eye'),
                 new RegistryCategory('Test BSN', 'TestBSN', 'symbol-interface'),
+                new RegistryCategory('Test BSN List', 'TestBSNList', 'symbol-method'),
                 new RegistryCategory('Test App Settings', 'TestAppSettings', 'settings'),
                 new RegistryCategory('Test ECS Types', 'TestComponent', 'package'),
                 new RegistryCategory('Test Logic & Bounds', 'TestEvent', 'pulse'),
@@ -609,6 +611,8 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             case 'TestRenderSystem': return new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.yellow'));
             case 'BSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.green'));
             case 'TestBSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.yellow'));
+            case 'BSNList': return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.green'));
+            case 'TestBSNList': return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.yellow'));
             case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
             case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));
@@ -1059,6 +1063,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             case 'TestRenderSystem': return new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.yellow'));
             case 'BSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.green'));
             case 'TestBSN': return new vscode.ThemeIcon('symbol-interface', new vscode.ThemeColor('charts.yellow'));
+            case 'BSNList': return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.green'));
+            case 'TestBSNList': return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.yellow'));
             case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
             case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));

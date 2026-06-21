@@ -2,6 +2,12 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.26] - 2026-06-21
+
+### Fixed
+- **Paren-Matching Parser**: Replaced the regex-based `add_systems` and `add_observer` parsing loops with a robust parenthesis depth matching algorithm, preventing parsing truncation and missing systems when registering tuple-based systems (e.g. `(sys_a, sys_b)`) with internal parentheses (e.g. `.run_if(...)`).
+- **Enhanced Render World Systems Recognition**: Expanded sub-app variable pattern matching to support `let Some(render_app)`, `let render_app`, and member prefix syntax. Added fallback checks for rendering-specific schedule phases (`Render`, `ExtractSchedule`, etc.) and system sets (`RenderSet`, `RenderSystems`, etc.) to ensure 100% accurate classification of Render World Systems.
+
 ## [0.1.25] - 2026-06-20
 
 ### Fixed

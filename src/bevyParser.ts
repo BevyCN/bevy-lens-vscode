@@ -305,7 +305,7 @@ export class BevyParser {
         
         // 1. 扫描 RenderApp 子 App 变量定义
         const renderAppVars = new Set<string>();
-        const subAppRegex = /let\s+Ok\(\s*([A-Za-z0-9_]+)\s*\)\s*=\s*[A-Za-z0-9_]+\.(?:get_)?sub_app_mut\(\s*RenderApp\s*\)/g;
+        const subAppRegex = /let\s+(?:Ok|Some)?\(?\s*([A-Za-z0-9_]+)\s*\)?\s*=\s*[A-Za-z0-9_.]+\.(?:get_)?sub_app_mut\(\s*RenderApp\s*\)/g;
         let subAppMatch;
         while ((subAppMatch = subAppRegex.exec(content)) !== null) {
             renderAppVars.add(subAppMatch[1]);
@@ -652,10 +652,68 @@ export class BevyParser {
 
         // 顺便提取并缓存此文件内的 add_systems 与 add_observer 调度配置，减少后续重复的磁盘读取
         const addSystems: Array<{ appName: string, phase: string, chainText: string, isRenderWorld: boolean }> = [];
-        const addSystemsRegex = /\.add_systems\(\s*([A-Za-z0-9_:]+)\s*,\s*([^;]+?)\)/g;
-        let scheduleMatch: RegExpExecArray | null;
-        while ((scheduleMatch = addSystemsRegex.exec(content)) !== null) {
-            const beforeContent = content.substring(0, scheduleMatch.index);
+        let searchIndex = 0;
+        while (true) {
+            const addSystemsMatch = content.indexOf('.add_systems', searchIndex);
+            if (addSystemsMatch === -1) break;
+
+            const startIdx = addSystemsMatch;
+            searchIndex = startIdx + 12; // 越过 '.add_systems'
+
+            // 寻找紧随其后的左括号 '('
+            let leftParenIdx = content.indexOf('(', searchIndex);
+            if (leftParenIdx === -1) continue;
+
+            // 如果中间夹杂了非空白字符，说明可能不是函数调用，跳过
+            const midText = content.substring(searchIndex, leftParenIdx).trim();
+            if (midText.length > 0) {
+                continue;
+            }
+
+            // 括号匹配算法
+            let depth = 1;
+            let currentIdx = leftParenIdx + 1;
+            let foundMatch = false;
+            while (currentIdx < content.length) {
+                const char = content[currentIdx];
+                if (char === '(') {
+                    depth++;
+                } else if (char === ')') {
+                    depth--;
+                    if (depth === 0) {
+                        foundMatch = true;
+                        break;
+                    }
+                }
+                currentIdx++;
+            }
+
+            if (!foundMatch) continue;
+
+            // 提取出整个括号内的参数文本
+            const paramsText = content.substring(leftParenIdx + 1, currentIdx);
+            searchIndex = currentIdx + 1; // 更新下次搜索起始点
+
+            // 在最外层寻找第一个逗号
+            let splitCommaIdx = -1;
+            let pDepth = 0;
+            for (let k = 0; k < paramsText.length; k++) {
+                const char = paramsText[k];
+                if (char === '(') pDepth++;
+                else if (char === ')') pDepth--;
+                else if (char === ',' && pDepth === 0) {
+                    splitCommaIdx = k;
+                    break;
+                }
+            }
+
+            if (splitCommaIdx === -1) continue;
+
+            const phase = paramsText.substring(0, splitCommaIdx).trim();
+            const chainText = paramsText.substring(splitCommaIdx + 1).trim();
+
+            // 寻找 stmtPrefix
+            const beforeContent = content.substring(0, startIdx);
             const lastStmtTerminator = Math.max(
                 beforeContent.lastIndexOf(';'),
                 beforeContent.lastIndexOf('{'),
@@ -679,21 +737,76 @@ export class BevyParser {
                 }
             }
 
+            // 兜底判定：如果时间表(Schedule/Phase)或系统集(SystemSet)带有渲染特征，亦判定为渲染世界系统
+            if (!isRenderWorld) {
+                // 常见的渲染调度器阶段 (比如 Render, ExtractSchedule, Core3d, Core2d)
+                const renderPhases = ['Render', 'ExtractSchedule', 'Core3d', 'Core2d'];
+                if (renderPhases.includes(phase) || phase.startsWith('Render') || phase.startsWith('ExtractSchedule')) {
+                    isRenderWorld = true;
+                }
+                
+                // 常见的渲染系统集关键字 (比如 RenderSet, RenderSystems, Core3dSystems, Core2dSystems)
+                if (!isRenderWorld) {
+                    const renderSetKeywords = ['RenderSet::', 'RenderSystems::', 'Core3dSystems::', 'Core2dSystems::', 'RenderSet', 'RenderSystems', 'Core3dSystems', 'Core2dSystems'];
+                    for (const kw of renderSetKeywords) {
+                        if (chainText.includes(kw)) {
+                            isRenderWorld = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
             addSystems.push({
                 appName,
-                phase: scheduleMatch[1],
-                chainText: scheduleMatch[2],
+                phase,
+                chainText,
                 isRenderWorld
             });
         }
         this.addSystemsCache.set(filePath, addSystems);
 
         const addObservers: Array<{ chainText: string }> = [];
-        const addObserverRegex = /\.add_observer\(\s*([^;]+?)\)/g;
-        let observerMatch: RegExpExecArray | null;
-        while ((observerMatch = addObserverRegex.exec(content)) !== null) {
+        let obsSearchIdx = 0;
+        while (true) {
+            const addObserverMatch = content.indexOf('.add_observer', obsSearchIdx);
+            if (addObserverMatch === -1) break;
+
+            const startIdx = addObserverMatch;
+            obsSearchIdx = startIdx + 13; // 越过 '.add_observer'
+
+            let leftParenIdx = content.indexOf('(', obsSearchIdx);
+            if (leftParenIdx === -1) continue;
+
+            const midText = content.substring(obsSearchIdx, leftParenIdx).trim();
+            if (midText.length > 0) {
+                continue;
+            }
+
+            let depth = 1;
+            let currentIdx = leftParenIdx + 1;
+            let foundMatch = false;
+            while (currentIdx < content.length) {
+                const char = content[currentIdx];
+                if (char === '(') {
+                    depth++;
+                } else if (char === ')') {
+                    depth--;
+                    if (depth === 0) {
+                        foundMatch = true;
+                        break;
+                    }
+                }
+                currentIdx++;
+            }
+
+            if (!foundMatch) continue;
+
+            const paramsText = content.substring(leftParenIdx + 1, currentIdx);
+            obsSearchIdx = currentIdx + 1;
+
             addObservers.push({
-                chainText: observerMatch[1]
+                chainText: paramsText.trim()
             });
         }
         this.addObserversCache.set(filePath, addObservers);

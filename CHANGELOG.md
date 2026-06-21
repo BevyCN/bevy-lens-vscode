@@ -2,6 +2,16 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.28] - 2026-06-21
+
+### Added
+- **Customizable Render Graph Schedules**: Added a `"bevyLens.customRenderGraphSchedules"` config option in settings to let users define custom render schedules (e.g. `CoreCustom3D`) for Render Graph classification.
+
+### Fixed
+- **Avoid Search/Reference Sidebar Focus Intrusion**: Integrated a visibility check on the Bevy Explorer tree view to prevent auto-reveal from stealing active tab focus and switching the sidebar back when users navigate search results or references. Introduced a custom command `'bevy-lens.registry.openFile'` that forces Explorer reveal only when users intentionally click a Registry node.
+- **Dependency Isolation & Precise Matching**: Replaced loose `.includes` substring matching with strict RegExp word boundaries (`\b${system.name}\b`) in the postprocessor, preventing common system names (like `draw` or `setup`) from matching unrelated systems (like `cpu_draw` or `draw_gizmos`). Partitioned multi-system registration chains into local and public scope contexts, preventing dependencies (e.g. `.after(...)`, `.in_set(...)`) from leaking between systems in a tuple.
+- **Render World Detection Fixes**: Refined the `isRenderWorld` schedule phase fallback check to only match `Render` and `ExtractSchedule` (including their variants like `RenderStartup`), returning all other un-associated schedules to the Main World. Enhanced sub-app regex mapping to recognize the `mut` keyword (e.g., `let mut render_app = ...`).
+
 ## [0.1.27] - 2026-06-21
 
 ### Added

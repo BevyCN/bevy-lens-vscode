@@ -306,7 +306,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             
             const fileUri = vscode.Uri.file(element.parentShader.filePath);
             item.command = {
-                command: 'vscode.open',
+                command: 'bevy-lens.registry.openFile',
                 title: 'Open File',
                 arguments: [
                     fileUri,
@@ -329,7 +329,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             
             const fileUri = vscode.Uri.file(element.parentShader.filePath);
             item.command = {
-                command: 'vscode.open',
+                command: 'bevy-lens.registry.openFile',
                 title: 'Open File',
                 arguments: [
                     fileUri,
@@ -385,7 +385,7 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             // 点击命令：定位至代码行
             const fileUri = vscode.Uri.file(element.filePath);
             item.command = {
-                command: 'vscode.open',
+                command: 'bevy-lens.registry.openFile',
                 title: 'Open File',
                 arguments: [
                     fileUri,

@@ -298,6 +298,15 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(changeSortOrderCmd);
 
+    // 注册专门处理从 Bevy 注册表面板点击定位打开文件的命令
+    const registryOpenFileCmd = vscode.commands.registerCommand('bevy-lens.registry.openFile', async (uri: vscode.Uri, options?: vscode.TextDocumentShowOptions) => {
+        // 先通过内置命令打开对应的文档
+        await vscode.commands.executeCommand('vscode.open', uri, options);
+        // 然后强制联动定位，无视其当前的 visible 状态
+        revealActiveEditor(true);
+    });
+    context.subscriptions.push(registryOpenFileCmd);
+
     // 5. 监听文件系统变动（自动防抖增量重载）
     const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{rs,wgsl,wesl}');
     fileWatcher.onDidChange((uri) => handleFileChange(uri));
@@ -306,10 +315,16 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(fileWatcher);
 
     // 自动高亮并定位当前编辑的文件节点
-    const revealActiveEditor = () => {
+    const revealActiveEditor = (force = false) => {
 
         const editor = vscode.window.activeTextEditor;
         if (!editor) { return; }
+
+        // 核心安全防护：除非是 force=true (由插件特定的定位命令触发)，否则如果 Explorer 树不可见，绝不调用 reveal。
+        // 这彻底解决了当用户在全局搜索、Find all references 切换文件时被强制跳回 Bevy Explorer 标签页的严重体验 Bug。
+        if (!force && !explorerTreeView.visible) {
+            return;
+        }
 
         const filePath = editor.document.uri.fsPath;
         const fileNode = semanticExplorerProvider.findFileNode(filePath);
@@ -328,7 +343,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // 6. 监听当前激活编辑器的变化 (双向定位)
     const activeEditorListener = vscode.window.onDidChangeActiveTextEditor(() => {
-        revealActiveEditor();
+        revealActiveEditor(false);
     });
     context.subscriptions.push(activeEditorListener);
 

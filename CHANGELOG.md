@@ -2,6 +2,15 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.27] - 2026-06-21
+
+### Added
+- **Render Graph Classification**: Added a new category "Render Graph" and "Test Render Graph" in the tree views to classify Render Pass systems based on Bevy's new schedule-driven rendering architecture.
+- **Render Graph Detection Rules**:
+  - Automatically identifies functions with a `RenderContext` parameter (e.g. `mut ctx: RenderContext`) as Render Graph systems.
+  - Automatically re-classifies systems registered under `Core3d` and `Core2d` schedule phases (or their variants) as Render Graph systems.
+  - Assigned a distinct `'circuit-board'` icon in tree view categories for clear visual representation.
+
 ## [0.1.26] - 2026-06-21
 
 ### Fixed

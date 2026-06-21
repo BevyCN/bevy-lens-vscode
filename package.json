@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -344,6 +344,14 @@
             "Sort elements by their line position in the source file"
           ],
           "description": "Specify how Bevy registry elements should be sorted in the tree views."
+        },
+        "bevyLens.customRenderGraphSchedules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "User-defined custom render schedules (e.g. CoreCustom3D) to be classified under Render Graph systems."
         }
       }
     }

@@ -39,7 +39,7 @@ function buildElementTooltip(element: BevyElement, elementErrors: vscode.Diagnos
     markdown.appendMarkdown(`* **File**: \`${path.basename(element.filePath)}\` (Line ${element.line})\n\n`);
 
     // System 与 Observer 调度与访问分析展示
-    if ((element.type === 'System' || element.type === 'TestSystem' || element.type === 'MainSystem' || element.type === 'TestMainSystem' || element.type === 'RenderSystem' || element.type === 'TestRenderSystem' || element.type === 'Observer' || element.type === 'TestObserver') && element.systemMetadata) {
+    if ((element.type === 'System' || element.type === 'TestSystem' || element.type === 'MainSystem' || element.type === 'TestMainSystem' || element.type === 'RenderSystem' || element.type === 'TestRenderSystem' || element.type === 'Observer' || element.type === 'TestObserver' || element.type === 'RenderGraph' || element.type === 'TestRenderGraph') && element.systemMetadata) {
         const meta = element.systemMetadata;
         markdown.appendMarkdown(`---\n\n`);
         
@@ -420,12 +420,14 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
                 new RegistryCategory('Assets', 'Asset', 'package'),
                 new RegistryCategory('Main World Systems', 'MainSystem', 'gear'),
                 new RegistryCategory('Render World Systems', 'RenderSystem', 'server-process'),
+                new RegistryCategory('Render Graph', 'RenderGraph', 'circuit-board'),
                 new RegistryCategory('Observers', 'Observer', 'eye'),
                 new RegistryCategory('BSN', 'BSN', 'symbol-interface'),
                 new RegistryCategory('BSN List', 'BSNList', 'symbol-method'),
                 // 新增测试分类
                 new RegistryCategory('Test Main World Systems', 'TestMainSystem', 'beaker'),
                 new RegistryCategory('Test Render World Systems', 'TestRenderSystem', 'server-process'),
+                new RegistryCategory('Test Render Graph', 'TestRenderGraph', 'circuit-board'),
                 new RegistryCategory('Test Observers', 'TestObserver', 'eye'),
                 new RegistryCategory('Test BSN', 'TestBSN', 'symbol-interface'),
                 new RegistryCategory('Test BSN List', 'TestBSNList', 'symbol-method'),
@@ -615,6 +617,8 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
             case 'TestBSNList': return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.yellow'));
             case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
             case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
+            case 'RenderGraph': return new vscode.ThemeIcon('circuit-board', new vscode.ThemeColor('charts.red'));
+            case 'TestRenderGraph': return new vscode.ThemeIcon('circuit-board', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));
         }
     }
@@ -1067,6 +1071,8 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             case 'TestBSNList': return new vscode.ThemeIcon('symbol-method', new vscode.ThemeColor('charts.yellow'));
             case 'Observer': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.blue'));
             case 'TestObserver': return new vscode.ThemeIcon('eye', new vscode.ThemeColor('charts.yellow'));
+            case 'RenderGraph': return new vscode.ThemeIcon('circuit-board', new vscode.ThemeColor('charts.red'));
+            case 'TestRenderGraph': return new vscode.ThemeIcon('circuit-board', new vscode.ThemeColor('charts.yellow'));
             default: return new vscode.ThemeIcon('question', new vscode.ThemeColor('charts.foreground'));
         }
     }

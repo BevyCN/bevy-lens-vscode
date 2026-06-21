@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 
 export interface BevyElement {
     name: string;
-    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver' | 'MainSystem' | 'RenderSystem' | 'TestMainSystem' | 'TestRenderSystem' | 'BSN' | 'TestBSN' | 'BSNList' | 'TestBSNList' | 'AppSettings' | 'TestAppSettings';
+    type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver' | 'MainSystem' | 'RenderSystem' | 'TestMainSystem' | 'TestRenderSystem' | 'BSN' | 'TestBSN' | 'BSNList' | 'TestBSNList' | 'AppSettings' | 'TestAppSettings' | 'RenderGraph' | 'TestRenderGraph';
     filePath: string;
     crateName?: string; // 所属的 Crate 名称
     sourceTarget?: { type: 'lib' | 'bin' | 'example'; name?: string }; // Rust 构建目标类型与名字
@@ -207,15 +207,89 @@ export class BevyParser {
         }
 
         // 3. 全局后处理：链接 add_systems (0 I/O 纯内存运行)
-        const globalSystems = elements.filter(e => (e.type === 'System' || e.type === 'TestSystem' || e.type === 'MainSystem' || e.type === 'TestMainSystem' || e.type === 'RenderSystem' || e.type === 'TestRenderSystem'));
+        const globalSystems = elements.filter(e => (e.type === 'System' || e.type === 'TestSystem' || e.type === 'MainSystem' || e.type === 'TestMainSystem' || e.type === 'RenderSystem' || e.type === 'TestRenderSystem' || e.type === 'RenderGraph' || e.type === 'TestRenderGraph'));
 
-        for (const addSystemsList of this.addSystemsCache.values()) {
+        const config = vscode.workspace.getConfiguration('bevyLens');
+        const customSchedules = config.get<string[]>('customRenderGraphSchedules', []) || [];
+
+        for (const [addSystemsFilePath, addSystemsList] of this.addSystemsCache.entries()) {
+            const addSystemsCrate = getCrateName(addSystemsFilePath);
+
             for (const item of addSystemsList) {
                 const phase = item.phase;
                 const chainText = item.chainText;
 
+                // 提取公共修饰文本
+                let publicText = '';
+                const trimmedChain = chainText.trim();
+                if (trimmedChain.startsWith('(')) {
+                    let depth = 0;
+                    let matchIdx = -1;
+                    for (let k = 0; k < chainText.length; k++) {
+                        const char = chainText[k];
+                        if (char === '(') {
+                            depth++;
+                        } else if (char === ')') {
+                            depth--;
+                            if (depth === 0) {
+                                matchIdx = k;
+                                break;
+                            }
+                        }
+                    }
+                    if (matchIdx !== -1) {
+                        publicText = chainText.substring(matchIdx + 1);
+                    }
+                }
+
                 for (const system of globalSystems) {
-                    if (chainText.includes(system.name) && system.systemMetadata) {
+                    // 核心约束 1：必须在同一个 Crate 内，完全杜绝跨 Crate 同名误伤！
+                    if (system.crateName !== addSystemsCrate) continue;
+
+                    // 核心约束 2：文件局部优先原则，如果当前文件已经声明了同名的系统，那么简单标识符引用绝对不能污染其它文件内的同名系统！
+                    const isSimpleIdentifier = !chainText.includes('::' + system.name) && !chainText.includes(system.name + '::');
+                    if (isSimpleIdentifier && system.filePath !== addSystemsFilePath) {
+                        const currentFileHasSameNameSystem = globalSystems.some(s => s.name === system.name && s.filePath === addSystemsFilePath);
+                        if (currentFileHasSameNameSystem) {
+                            continue;
+                        }
+                    }
+
+                    // 使用精确单词边界匹配，避免如 system.name = 'draw' 匹配到 'cpu_draw' 或 'draw_gizmos' 导致的严重误命中
+                    const wordRegex = new RegExp(`\\b${system.name}\\b`, 'g');
+                    let wordMatch: RegExpExecArray | null;
+                    
+                    while ((wordMatch = wordRegex.exec(chainText)) !== null) {
+                        if (!system.systemMetadata) continue;
+
+                        // 从系统名后结束位置开始向后遍历，找到其专属的局部修饰链终止位置 (遇到逗号或外层右括号或分号终止)
+                        const endIdx = wordMatch.index + system.name.length;
+                        let localEndIdx = chainText.length;
+                        let pDepth = 0;
+                        for (let k = endIdx; k < chainText.length; k++) {
+                            const char = chainText[k];
+                            if (char === '(') {
+                                pDepth++;
+                            } else if (char === ')') {
+                                if (pDepth > 0) {
+                                    pDepth--;
+                                } else {
+                                    localEndIdx = k;
+                                    break;
+                                }
+                            } else if (char === ',' && pDepth === 0) {
+                                localEndIdx = k;
+                                break;
+                            } else if (char === ';' && pDepth === 0) {
+                                localEndIdx = k;
+                                break;
+                            }
+                        }
+
+                        const localText = chainText.substring(endIdx, localEndIdx);
+                        // 局部修饰文本与公共修饰文本拼接
+                        const decoratorText = localText + ' ' + publicText;
+
                         system.systemMetadata.schedulePhase = phase;
 
                         // 渲染世界系统类型修正
@@ -227,15 +301,25 @@ export class BevyParser {
                             }
                         }
 
+                        // 新版 Render Graph 修正：如果系统运行在指定的 Core3d, Core2d 或自定义的渲染图阶段，则归类为 RenderGraph/TestRenderGraph
+                        const isCore3dOr2d = phase === 'Core3d' || phase === 'Core2d' || phase.startsWith('Core3d::') || phase.startsWith('Core2d::') || customSchedules.includes(phase) || customSchedules.some(cs => phase.startsWith(cs + '::'));
+                        if (isCore3dOr2d) {
+                            if (system.type === 'MainSystem' || system.type === 'RenderSystem') {
+                                system.type = 'RenderGraph';
+                            } else if (system.type === 'TestMainSystem' || system.type === 'TestRenderSystem') {
+                                system.type = 'TestRenderGraph';
+                            }
+                        }
+
                         const afterRegex = /\.after\(\s*([A-Za-z0-9_:]+)\s*\)/g;
                         let specMatch: RegExpExecArray | null;
-                        while ((specMatch = afterRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runsAfter.includes(specMatch[1])) system.systemMetadata.runsAfter.push(specMatch[1]); }
+                        while ((specMatch = afterRegex.exec(decoratorText)) !== null) { if (!system.systemMetadata.runsAfter.includes(specMatch[1])) system.systemMetadata.runsAfter.push(specMatch[1]); }
                         const beforeRegex = /\.before\(\s*([A-Za-z0-9_:]+)\s*\)/g;
-                        while ((specMatch = beforeRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runsBefore.includes(specMatch[1])) system.systemMetadata.runsBefore.push(specMatch[1]); }
+                        while ((specMatch = beforeRegex.exec(decoratorText)) !== null) { if (!system.systemMetadata.runsBefore.includes(specMatch[1])) system.systemMetadata.runsBefore.push(specMatch[1]); }
                         const inSetRegex = /\.in_set\(\s*([A-Za-z0-9_:]+)\s*\)/g;
-                        while ((specMatch = inSetRegex.exec(chainText)) !== null) { if (!system.systemMetadata.belongsToSets.includes(specMatch[1])) system.systemMetadata.belongsToSets.push(specMatch[1]); }
+                        while ((specMatch = inSetRegex.exec(decoratorText)) !== null) { if (!system.systemMetadata.belongsToSets.includes(specMatch[1])) system.systemMetadata.belongsToSets.push(specMatch[1]); }
                         const runIfRegex = /\.run_if\(\s*([^)]+)\)/g;
-                        while ((specMatch = runIfRegex.exec(chainText)) !== null) { if (!system.systemMetadata.runConditions.includes(specMatch[1])) system.systemMetadata.runConditions.push(specMatch[1]); }
+                        while ((specMatch = runIfRegex.exec(decoratorText)) !== null) { if (!system.systemMetadata.runConditions.includes(specMatch[1])) system.systemMetadata.runConditions.push(specMatch[1]); }
                     }
                 }
 
@@ -305,7 +389,7 @@ export class BevyParser {
         
         // 1. 扫描 RenderApp 子 App 变量定义
         const renderAppVars = new Set<string>();
-        const subAppRegex = /let\s+(?:Ok|Some)?\(?\s*([A-Za-z0-9_]+)\s*\)?\s*=\s*[A-Za-z0-9_.]+\.(?:get_)?sub_app_mut\(\s*RenderApp\s*\)/g;
+        const subAppRegex = /let\s+(?:Ok|Some)?\(?\s*(?:mut\s+)?([A-Za-z0-9_]+)\s*\)?\s*=\s*[A-Za-z0-9_.]+\.(?:get_)?sub_app_mut\(\s*RenderApp\s*\)/g;
         let subAppMatch;
         while ((subAppMatch = subAppRegex.exec(content)) !== null) {
             renderAppVars.add(subAppMatch[1]);
@@ -570,7 +654,8 @@ export class BevyParser {
                         fullSignature.includes('EventWriter<') || 
                         fullSignature.includes('Local<') ||
                         fullSignature.includes('NonSend<') ||
-                        fullSignature.includes('NonSendMut<');
+                        fullSignature.includes('NonSendMut<') ||
+                        fullSignature.includes('RenderContext');
 
                     if (hasBevyParams) {
                         const mutableResources: string[] = [];
@@ -595,9 +680,12 @@ export class BevyParser {
                         }
 
                         const { docstring, firstLine } = getDocstring(i);
+                        const isRenderGraph = fullSignature.includes('RenderContext');
                         const type = isObserver 
                             ? (inTestModule ? 'TestObserver' : 'Observer') 
-                            : (inTestModule ? 'TestMainSystem' : 'MainSystem');
+                            : (isRenderGraph 
+                                ? (inTestModule ? 'TestRenderGraph' : 'RenderGraph') 
+                                : (inTestModule ? 'TestMainSystem' : 'MainSystem'));
 
                         elements.push({
                             name: fnName,
@@ -737,23 +825,10 @@ export class BevyParser {
                 }
             }
 
-            // 兜底判定：如果时间表(Schedule/Phase)或系统集(SystemSet)带有渲染特征，亦判定为渲染世界系统
+            // 兜底判定：如果时间表(Schedule/Phase)是渲染时间表 Render，则属于渲染世界系统
             if (!isRenderWorld) {
-                // 常见的渲染调度器阶段 (比如 Render, ExtractSchedule, Core3d, Core2d)
-                const renderPhases = ['Render', 'ExtractSchedule', 'Core3d', 'Core2d'];
-                if (renderPhases.includes(phase) || phase.startsWith('Render') || phase.startsWith('ExtractSchedule')) {
+                if (phase === 'Render' || phase.startsWith('Render::') || phase === 'ExtractSchedule' || phase.startsWith('ExtractSchedule::')) {
                     isRenderWorld = true;
-                }
-                
-                // 常见的渲染系统集关键字 (比如 RenderSet, RenderSystems, Core3dSystems, Core2dSystems)
-                if (!isRenderWorld) {
-                    const renderSetKeywords = ['RenderSet::', 'RenderSystems::', 'Core3dSystems::', 'Core2dSystems::', 'RenderSet', 'RenderSystems', 'Core3dSystems', 'Core2dSystems'];
-                    for (const kw of renderSetKeywords) {
-                        if (chainText.includes(kw)) {
-                            isRenderWorld = true;
-                            break;
-                        }
-                    }
                 }
             }
 

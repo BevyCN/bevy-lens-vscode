@@ -76,6 +76,16 @@ export class ReferenceVisualizerPanel {
             null,
             this._disposables
         );
+
+        this._panel.onDidChangeViewState(
+            e => {
+                if (e.webviewPanel.visible) {
+                    this._sendData();
+                }
+            },
+            null,
+            this._disposables
+        );
     }
 
     public updateReferences(references: BevyReference[]) {
@@ -234,6 +244,9 @@ export class ReferenceVisualizerPanel {
         .relation-Create { border-left-color: #34d399; }
         .relation-Read { border-left-color: #60a5fa; }
         .relation-Write { border-left-color: #fb923c; }
+        .relation-Define { border-left-color: #fcd34d; }
+        .relation-Send { border-left-color: #fb923c; }
+        .relation-Receive { border-left-color: #60a5fa; }
 
         .legend {
             position: absolute;
@@ -271,28 +284,7 @@ export class ReferenceVisualizerPanel {
     </div>
     <div id="container">
         <div id="mynetwork"></div>
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #f59e0b;"></div>
-                <span>Target ECS Element</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #b180e6;"></div>
-                <span>Init (Initialize Resource/App)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #4ec9b0;"></div>
-                <span>Create (Spawn/Insert Entity)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #569cd6;"></div>
-                <span>Read (Res/Query read)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #ce9178;"></div>
-                <span>Write (ResMut/Query write)</span>
-            </div>
-        </div>
+        <div id="legendContainer" class="legend"></div>
         <div id="sidebar">
             <div class="list-title">Reference List</div>
             <div id="ref-list-container"></div>
@@ -337,7 +329,8 @@ export class ReferenceVisualizerPanel {
                 color: {
                     background: '#f59e0b',
                     border: '#d97706',
-                    highlight: { background: '#fcd34d', border: '#f59e0b' }
+                    highlight: { background: '#fcd34d', border: '#f59e0b' },
+                    hover: { background: '#fcd34d', border: '#f59e0b' }
                 },
                 font: { color: '#ffffff', size: 15, bold: true, face: '-apple-system' },
                 shape: 'hexagon',
@@ -345,12 +338,67 @@ export class ReferenceVisualizerPanel {
                 shadow: { enabled: true, color: 'rgba(245, 158, 11, 0.4)', size: 15, x: 0, y: 0 }
             });
 
+            const isEventOrMessage = targetType === 'Event' || targetType === 'Message';
+
+            // Generate Dynamic Legend
+            const legendContainer = document.getElementById('legendContainer');
+            if (isEventOrMessage) {
+                legendContainer.innerHTML = \`
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #f59e0b;"></div>
+                        <span>Target: \${targetType}</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fcd34d;"></div>
+                        <span>Define (Declaration)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fb923c;"></div>
+                        <span>Send (Send/Trigger)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #60a5fa;"></div>
+                        <span>Receive (Read/Listen)</span>
+                    </div>
+                \`;
+            } else {
+                legendContainer.innerHTML = \`
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #f59e0b;"></div>
+                        <span>Target: \${targetType}</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fcd34d;"></div>
+                        <span>Define (Declaration)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #a78bfa;"></div>
+                        <span>Init (Initialize)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #34d399;"></div>
+                        <span>Create (Spawn/Insert)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #60a5fa;"></div>
+                        <span>Read (Res/Query)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #fb923c;"></div>
+                        <span>Write (ResMut/Query/Remove)</span>
+                    </div>
+                \`;
+            }
+
             references.forEach((ref, index) => {
                 const relationColorMap = {
                     'Init': '#a78bfa',
                     'Create': '#34d399',
                     'Read': '#60a5fa',
-                    'Write': '#fb923c'
+                    'Write': '#fb923c',
+                    'Define': '#fcd34d',
+                    'Send': '#fb923c',
+                    'Receive': '#60a5fa'
                 };
                 const relationColor = relationColorMap[ref.relationType] || '#94a3b8';
 
@@ -402,7 +450,8 @@ export class ReferenceVisualizerPanel {
                     color: {
                         background: '#131824',
                         border: relationColor,
-                        highlight: { background: '#1e293b', border: relationColor }
+                        highlight: { background: '#1e293b', border: relationColor },
+                        hover: { background: '#1e293b', border: relationColor }
                     },
                     font: { color: '#f1f5f9', size: 13, face: '-apple-system' },
                     shape: 'box',
@@ -436,6 +485,9 @@ export class ReferenceVisualizerPanel {
             };
 
             const options = {
+                layout: {
+                    randomSeed: 42
+                },
                 nodes: {
                     margin: 10
                 },
@@ -463,23 +515,28 @@ export class ReferenceVisualizerPanel {
                 }
             };
 
-            network = new vis.Network(container, data, options);
+            if (network) {
+                network.setData(data);
+                network.setOptions(options);
+            } else {
+                network = new vis.Network(container, data, options);
 
-            // Double click to jump to code
-            network.on('doubleClick', params => {
-                if (params.nodes.length > 0) {
-                    const clickedNodeId = params.nodes[0];
-                    if (clickedNodeId !== 'target') {
-                        const clickedNode = nodes.find(n => n.id === clickedNodeId);
-                        if (clickedNode && clickedNode.filePath) {
-                            vscode.postMessage({
-                                command: 'jumpTo',
-                                data: { filePath: clickedNode.filePath, line: clickedNode.line }
-                            });
+                // Double click to jump to code
+                network.on('doubleClick', params => {
+                    if (params.nodes.length > 0) {
+                        const clickedNodeId = params.nodes[0];
+                        if (clickedNodeId !== 'target') {
+                            const clickedNode = nodes.find(n => n.id === clickedNodeId);
+                            if (clickedNode && clickedNode.filePath) {
+                                vscode.postMessage({
+                                    command: 'jumpTo',
+                                    data: { filePath: clickedNode.filePath, line: clickedNode.line }
+                                });
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
         function escapeHtml(str) {

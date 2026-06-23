@@ -2,6 +2,19 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.32] - 2026-06-23
+
+### Added
+- **Bevy 0.19 Event & Message Syntax Support**: Upgraded the reference parser to fully support the latest Bevy 0.19 decoupled event system, successfully matching `MessageReader`, `MessageWriter`, `.send()`, `.write()`, `.trigger()` and `On<T>` observers natively.
+- **Dynamic Event Legends**: Reference graphs targeting `Message` or `Event` types now automatically switch their relationship legends and link colors to specifically represent `Send (Send/Trigger)` and `Receive (Read/Listen)` instead of generic Read/Write.
+- **Definition Source Nodes**: The `Find Bevy Reference` graph now guarantees the injection of a `Define` node at the apex, allowing users to trace precisely where an ECS element was originally declared as a struct/enum.
+
+### Fixed
+- **Split Right Blank Window**: Fixed a bug where creating a split view of the reference graph resulted in an empty, non-functional Webview by establishing active state restoration pipelines on `onDidChangeViewState`.
+- **Erratic Graph Node Shuffling**: Rectified a problem causing nodes to randomly re-layout every time the tab was hidden and focused by utilizing `retainContextWhenHidden` appropriately with fixed layout seeds.
+- **Node Hover Legibility**: Fixed the node hover style using the native graph renderer's dark overlay to prevent text color bleed, significantly improving legibility over the default white overlay background.
+- **Unknown System Deduction Fallback**: Addressed an edge-case where exclusive `&mut World` systems (e.g. `pub(crate) fn send_events`) were categorized as `Unknown`. The parser now utilizes an intelligent backwards-scanning algorithm to deduce the nearest initiating `fn` signature.
+
 ## [0.1.31] - 2026-06-23
 
 ### Added

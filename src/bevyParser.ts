@@ -34,10 +34,10 @@ export interface BevyElement {
 
 export interface BevyReference {
     sourceName: string;
-    sourceType: 'System' | 'AppInit' | 'Observer' | 'Unknown';
+    sourceType: string;
     filePath: string;
     line: number;
-    relationType: 'Init' | 'Create' | 'Read' | 'Write';
+    relationType: 'Init' | 'Create' | 'Read' | 'Write' | 'Define' | 'Send' | 'Receive';
     details?: string;
 }
 
@@ -1007,6 +1007,19 @@ export class BevyParser {
         // 1. Get all cached elements
         const elements = this.assembleElementsFromCache();
 
+        // 1.5 Add "Define" relation for the target itself
+        const definitionEl = elements.find(el => el.name === targetName && (targetType ? el.type === targetType : true));
+        if (definitionEl) {
+            references.push({
+                sourceName: definitionEl.name,
+                sourceType: definitionEl.type,
+                filePath: definitionEl.filePath,
+                line: definitionEl.line,
+                relationType: 'Define',
+                details: `Defined in \`${definitionEl.filePath.split(/[\\\\/]/).pop()}\``
+            });
+        }
+
         // 2. Map existing metadata (Read/Write from system parameters)
         for (const el of elements) {
             const isSystemType = el.type === 'System' || el.type === 'MainSystem' || el.type === 'RenderSystem' || 
@@ -1132,8 +1145,24 @@ export class BevyParser {
                 }
 
                 const containingFunc = getContainingFunction(lineNum);
-                const sourceName = containingFunc ? containingFunc.name : 'Unknown';
-                const sourceType = containingFunc ? containingFunc.type : 'Unknown';
+                let sourceName = containingFunc ? containingFunc.name : 'Unknown';
+                let sourceType = containingFunc ? containingFunc.type : 'Unknown';
+
+                // Fallback to searching backwards for function name if Unknown
+                if (sourceName === 'Unknown') {
+                    for (let backIdx = idx - 1; backIdx >= 0; backIdx--) {
+                        const backLine = lines[backIdx];
+                        const fnMatch = backLine.match(/fn\s+([a-zA-Z0-9_]+)\s*\(/);
+                        if (fnMatch) {
+                            sourceName = fnMatch[1];
+                            sourceType = 'System'; // Assume System for these arbitrary functions
+                            break;
+                        }
+                        if (backLine.includes('struct ') || backLine.includes('impl ')) {
+                            break;
+                        }
+                    }
+                }
 
                 // Look for init_resource/insert_resource
                 const initMatch = lineContent.match(/\.(init_resource|insert_resource|init_non_send_resource|insert_non_send_resource)/);
@@ -1165,10 +1194,9 @@ export class BevyParser {
                     continue;
                 }
 
-                // Event reader/writer/trigger in parameters signature that were not caught by systemMetadata
-                if (targetType === 'Event') {
-                    if (lineContent.includes(`EventReader<`) || lineContent.includes(`Trigger<`) || lineContent.includes(`On<`)) {
-                        // verify it's not already added
+                // Event/Message reader/writer/trigger in parameters signature or method calls
+                if (targetType === 'Event' || targetType === 'Message') {
+                    if (lineContent.includes(`EventReader<`) || lineContent.includes(`MessageReader<`) || lineContent.includes(`Messages<`) || lineContent.includes(`Trigger<`) || lineContent.includes(`On<`) || lineContent.includes(`.read()`)) {
                         const exists = references.some(r => r.filePath === filePath && r.line === lineNum);
                         if (!exists) {
                             references.push({
@@ -1176,13 +1204,13 @@ export class BevyParser {
                                 sourceType: sourceType === 'Unknown' ? 'System' : sourceType,
                                 filePath,
                                 line: lineNum,
-                                relationType: 'Read',
-                                details: `Event/Trigger reader signature: \`${lineContent.trim()}\``
+                                relationType: 'Receive',
+                                details: `Receives/Listens: \`${lineContent.trim()}\``
                             });
                         }
                         continue;
                     }
-                    if (lineContent.includes(`EventWriter<`)) {
+                    if (lineContent.includes(`EventWriter<`) || lineContent.includes(`MessageWriter<`) || lineContent.includes(`.send`) || lineContent.includes(`.write`) || lineContent.includes(`.trigger`)) {
                         const exists = references.some(r => r.filePath === filePath && r.line === lineNum);
                         if (!exists) {
                             references.push({
@@ -1190,12 +1218,25 @@ export class BevyParser {
                                 sourceType: sourceType === 'Unknown' ? 'System' : sourceType,
                                 filePath,
                                 line: lineNum,
-                                relationType: 'Write',
-                                details: `Event writer signature: \`${lineContent.trim()}\``
+                                relationType: 'Send',
+                                details: `Sends/Triggers: \`${lineContent.trim()}\``
                             });
                         }
                         continue;
                     }
+                }
+                
+                // Also catch add_message and add_event
+                if ((targetType === 'Event' || targetType === 'Message') && (lineContent.match(/\.(add_event|add_message)\s*</))) {
+                    references.push({
+                        sourceName: sourceName === 'Unknown' ? 'App' : sourceName,
+                        sourceType: sourceType === 'Unknown' ? 'AppInit' : sourceType,
+                        filePath,
+                        line: lineNum,
+                        relationType: 'Define',
+                        details: `Defined/Registered: \`${lineContent.trim()}\``
+                    });
+                    continue;
                 }
             }
         };

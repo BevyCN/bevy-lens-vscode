@@ -86,7 +86,12 @@ export class ScheduleVisualizerPanel {
     }
 
     private _getSystems(elements: BevyElement[]) {
-        return elements.filter(e => e.type === 'System' || e.type === 'TestSystem').map(e => ({
+        return elements.filter(e => 
+            e.type === 'System' || e.type === 'TestSystem' ||
+            e.type === 'MainSystem' || e.type === 'TestMainSystem' ||
+            e.type === 'RenderSystem' || e.type === 'TestRenderSystem' ||
+            e.type === 'RenderGraph' || e.type === 'TestRenderGraph'
+        ).map(e => ({
             name: e.name,
             filePath: e.filePath,
             line: e.line,

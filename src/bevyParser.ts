@@ -32,6 +32,15 @@ export interface BevyElement {
     };
 }
 
+export interface BevyReference {
+    sourceName: string;
+    sourceType: 'System' | 'AppInit' | 'Observer' | 'Unknown';
+    filePath: string;
+    line: number;
+    relationType: 'Init' | 'Create' | 'Read' | 'Write';
+    details?: string;
+}
+
 export class BevyParser {
     private static parsedFilesCache = new Map<string, BevyElement[]>();
     private static addSystemsCache = new Map<string, Array<{ appName: string, phase: string, chainText: string, isRenderWorld: boolean }>>();
@@ -669,15 +678,18 @@ export class BevyParser {
                         while ((match = resMutRegex.exec(fullSignature)) !== null) { mutableResources.push(match[1]); }
                         while ((match = resRegex.exec(fullSignature)) !== null) { readableResources.push(match[1]); }
 
-                        const queryRegex = /Query<\s*([^>]+)\s*>/g;
-                        while ((match = queryRegex.exec(fullSignature)) !== null) {
-                            const queryInner = match[1];
-                            const mutCompRegex = /&mut\s+([A-Za-z0-9_]+)/g;
-                            let compMatch: RegExpExecArray | null;
-                            while ((compMatch = mutCompRegex.exec(queryInner)) !== null) { mutableComponents.push(compMatch[1]); }
-                            const readCompRegex = /&\s*(?!mut\s)([A-Za-z0-9_]+)/g;
-                            while ((compMatch = readCompRegex.exec(queryInner)) !== null) { readableComponents.push(compMatch[1]); }
-                        }
+                        // Components (from Query and filters)
+                        const mutCompRegex = /&mut\s+([A-Za-z0-9_]+)/g;
+                        while ((match = mutCompRegex.exec(fullSignature)) !== null) { mutableComponents.push(match[1]); }
+                        
+                        const readCompRegex = /&\s*(?!mut\s)([A-Za-z0-9_]+)/g;
+                        while ((match = readCompRegex.exec(fullSignature)) !== null) { readableComponents.push(match[1]); }
+
+                        const withRegex = /With<\s*([A-Za-z0-9_]+)\s*>/g;
+                        while ((match = withRegex.exec(fullSignature)) !== null) { readableComponents.push(match[1]); }
+                        
+                        const withoutRegex = /Without<\s*([A-Za-z0-9_]+)\s*>/g;
+                        while ((match = withoutRegex.exec(fullSignature)) !== null) { readableComponents.push(match[1]); }
 
                         const { docstring, firstLine } = getDocstring(i);
                         const isRenderGraph = fullSignature.includes('RenderContext');
@@ -983,5 +995,228 @@ export class BevyParser {
                 entryPoints
             }
         });
+    }
+
+    /**
+     * Finds all references of a Bevy element (Component, Resource, Asset, etc.) in the workspace,
+     * identifying if it is initialized, created/spawned, mutably written, or read.
+     */
+    public static async findReferences(targetName: string, targetType: string): Promise<BevyReference[]> {
+        const references: BevyReference[] = [];
+
+        // 1. Get all cached elements
+        const elements = this.assembleElementsFromCache();
+
+        // 2. Map existing metadata (Read/Write from system parameters)
+        for (const el of elements) {
+            const isSystemType = el.type === 'System' || el.type === 'MainSystem' || el.type === 'RenderSystem' || 
+                                 el.type === 'TestSystem' || el.type === 'TestMainSystem' || el.type === 'TestRenderSystem' ||
+                                 el.type === 'RenderGraph' || el.type === 'TestRenderGraph';
+            const isObserverType = el.type === 'Observer' || el.type === 'TestObserver';
+
+            if ((isSystemType || isObserverType) && el.systemMetadata) {
+                const meta = el.systemMetadata;
+                const sourceType = isObserverType ? 'Observer' : 'System';
+
+                // Check Component / Resource reads & writes
+                if (meta.mutableComponents.includes(targetName) || meta.mutableResources.includes(targetName)) {
+                    references.push({
+                        sourceName: el.name,
+                        sourceType,
+                        filePath: el.filePath,
+                        line: el.line,
+                        relationType: 'Write',
+                        details: `Mutably accessed in signature`
+                    });
+                } else if (meta.readableComponents.includes(targetName) || meta.readableResources.includes(targetName)) {
+                    references.push({
+                        sourceName: el.name,
+                        sourceType,
+                        filePath: el.filePath,
+                        line: el.line,
+                        relationType: 'Read',
+                        details: `Immutably accessed in signature`
+                    });
+                }
+            }
+        }
+
+        // 3. Scan file contents in parallel to find spawn, insert, init_resource, insert_resource, EventReader/Writer, Observers triggers
+        const filePaths = Array.from(this.parsedFilesCache.keys()).filter(fp => fp.endsWith('.rs'));
+        const wordRegex = new RegExp(`\\b${targetName}\\b`);
+        
+        const processFile = async (filePath: string) => {
+            let content = '';
+            try {
+                content = await fs.promises.readFile(filePath, 'utf8');
+            } catch {
+                return;
+            }
+
+            if (!content.includes(targetName)) {
+                return;
+            }
+
+            if (!wordRegex.test(content)) {
+                return;
+            }
+
+            const lines = content.split(/\r?\n/);
+
+            // Let's first build a map of line ranges for functions/impls in this file
+            // to associate code lines with their containing function/plugin
+            const functionRanges: Array<{ name: string; type: 'System' | 'AppInit' | 'Observer' | 'Unknown'; startLine: number; endLine: number }> = [];
+            
+            // We can match functions from elements that belong to this file
+            const fileElements = elements.filter(el => el.filePath === filePath);
+            const systemsAndObservers = fileElements.filter(el => 
+                el.type === 'System' || el.type === 'MainSystem' || el.type === 'RenderSystem' ||
+                el.type === 'TestSystem' || el.type === 'TestMainSystem' || el.type === 'TestRenderSystem' ||
+                el.type === 'RenderGraph' || el.type === 'TestRenderGraph' ||
+                el.type === 'Observer' || el.type === 'TestObserver' ||
+                el.type === 'Plugin'
+            );
+
+            // Approximate function end lines by looking at brace depth or next function
+            const sortedFunctions = [...systemsAndObservers].sort((a, b) => a.line - b.line);
+            for (let i = 0; i < sortedFunctions.length; i++) {
+                const current = sortedFunctions[i];
+                const startIdx = current.line - 1;
+                // find end line by brace matching or next function start
+                let endLine = lines.length;
+                if (i < sortedFunctions.length - 1) {
+                    endLine = sortedFunctions[i + 1].line - 1;
+                }
+                
+                // Let's count braces to find actual end line if possible
+                let braceCount = 0;
+                let foundBrace = false;
+                for (let l = startIdx; l < endLine; l++) {
+                    const line = lines[l];
+                    const openCount = (line.match(/\{/g) || []).length;
+                    const closeCount = (line.match(/\}/g) || []).length;
+                    if (openCount > 0) foundBrace = true;
+                    braceCount += openCount - closeCount;
+                    if (foundBrace && braceCount <= 0) {
+                        endLine = l + 1;
+                        break;
+                    }
+                }
+
+                functionRanges.push({
+                    name: current.name,
+                    type: (current.type === 'Observer' || current.type === 'TestObserver') ? 'Observer' :
+                          (current.type === 'Plugin' ? 'AppInit' : 'System'),
+                    startLine: current.line,
+                    endLine: endLine
+                });
+            }
+
+            const getContainingFunction = (lineNum: number) => {
+                for (const range of functionRanges) {
+                    if (lineNum >= range.startLine && lineNum <= range.endLine) {
+                        return range;
+                    }
+                }
+                return null;
+            };
+
+            // Now scan line by line
+            for (let idx = 0; idx < lines.length; idx++) {
+                const lineContent = lines[idx];
+                const lineNum = idx + 1;
+
+                // Word boundary check for targetName
+                if (!wordRegex.test(lineContent)) {
+                    continue;
+                }
+
+                const containingFunc = getContainingFunction(lineNum);
+                const sourceName = containingFunc ? containingFunc.name : 'Unknown';
+                const sourceType = containingFunc ? containingFunc.type : 'Unknown';
+
+                // Look for init_resource/insert_resource
+                const initMatch = lineContent.match(/\.(init_resource|insert_resource|init_non_send_resource|insert_non_send_resource)/);
+                if (initMatch) {
+                    references.push({
+                        sourceName: sourceName === 'Unknown' ? 'App' : sourceName,
+                        sourceType: sourceType === 'Unknown' ? 'AppInit' : sourceType,
+                        filePath,
+                        line: lineNum,
+                        relationType: 'Init',
+                        details: `Initialized: \`${lineContent.trim()}\``
+                    });
+                    continue;
+                }
+
+                // Look for spawn / insert Component
+                // Look for spawn / insert Component or remove
+                const spawnMatch = lineContent.match(/\.(spawn|insert|spawn_empty)\(/);
+                const removeMatch = lineContent.match(/\.(remove|remove_resource)::</);
+                if (spawnMatch || removeMatch) {
+                    references.push({
+                        sourceName,
+                        sourceType: sourceType === 'Unknown' ? 'System' : sourceType,
+                        filePath,
+                        line: lineNum,
+                        relationType: spawnMatch ? 'Create' : 'Write',
+                        details: spawnMatch ? `Inserted/Created: \`${lineContent.trim()}\`` : `Removed: \`${lineContent.trim()}\``
+                    });
+                    continue;
+                }
+
+                // Event reader/writer/trigger in parameters signature that were not caught by systemMetadata
+                if (targetType === 'Event') {
+                    if (lineContent.includes(`EventReader<`) || lineContent.includes(`Trigger<`) || lineContent.includes(`On<`)) {
+                        // verify it's not already added
+                        const exists = references.some(r => r.filePath === filePath && r.line === lineNum);
+                        if (!exists) {
+                            references.push({
+                                sourceName,
+                                sourceType: sourceType === 'Unknown' ? 'System' : sourceType,
+                                filePath,
+                                line: lineNum,
+                                relationType: 'Read',
+                                details: `Event/Trigger reader signature: \`${lineContent.trim()}\``
+                            });
+                        }
+                        continue;
+                    }
+                    if (lineContent.includes(`EventWriter<`)) {
+                        const exists = references.some(r => r.filePath === filePath && r.line === lineNum);
+                        if (!exists) {
+                            references.push({
+                                sourceName,
+                                sourceType: sourceType === 'Unknown' ? 'System' : sourceType,
+                                filePath,
+                                line: lineNum,
+                                relationType: 'Write',
+                                details: `Event writer signature: \`${lineContent.trim()}\``
+                            });
+                        }
+                        continue;
+                    }
+                }
+            }
+        };
+        
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < filePaths.length; i += CHUNK_SIZE) {
+            const chunk = filePaths.slice(i, i + CHUNK_SIZE);
+            await Promise.all(chunk.map(processFile));
+        }
+
+        // Deduplicate references based on filePath, line, and relationType
+        const uniqueRefs: BevyReference[] = [];
+        const seen = new Set<string>();
+        for (const ref of references) {
+            const key = `${ref.filePath}:${ref.line}:${ref.relationType}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueRefs.push(ref);
+            }
+        }
+
+        return uniqueRefs;
     }
 }

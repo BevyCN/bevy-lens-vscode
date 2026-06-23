@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.28",
+  "version": "0.1.30",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -144,6 +144,11 @@
       {
         "command": "bevy-lens.explorer.copyRelativePath",
         "title": "Copy Relative Path"
+      },
+      {
+        "command": "bevy-lens.findReferences",
+        "title": "Find Bevy Reference",
+        "icon": "$(references)"
       }
     ],
     "menus": {
@@ -269,6 +274,18 @@
           "command": "bevy-lens.explorer.copyRelativePath",
           "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
           "group": "7_path@2"
+        },
+        {
+          "command": "bevy-lens.findReferences",
+          "when": "viewItem == bevyElement",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "bevy-lens.findReferences",
+          "when": "editorTextFocus && resourceLangId == rust",
+          "group": "navigation"
         }
       ]
     },

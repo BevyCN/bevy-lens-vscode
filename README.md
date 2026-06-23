@@ -20,7 +20,7 @@ Get a centralized, organized view of all Bevy types defined in your project:
 *   **Code Navigation**: Click any item in the tree view to instantly jump directly to its definition in the editor.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/globalregistry.jpg" alt="Bevy Global Registry" width="600px">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/globalregistry.webp" alt="Bevy Global Registry" width="600px">
 </p>
 
 ### 2. 📁 Semantic Workspace Explorer
@@ -30,7 +30,7 @@ An enhanced physical file explorer that reveals Bevy structures inline:
 *   **Custom Brand Icons**: Instantly differentiate between components, systems, and assets using dedicated VS Code codicons matching your active icon theme.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/explore.jpg" alt="Semantic Workspace Explorer" width="600px">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/explore.webp" alt="Semantic Workspace Explorer" width="600px">
 </p>
 
 ### 3. 📝 Rich Previews, Shader Binding Bridge & Concurrency Diagnostics
@@ -39,7 +39,7 @@ An enhanced physical file explorer that reveals Bevy structures inline:
 *   **Parallel Query Write-Conflict Linter**: Statically checks systems registered in the same schedule phase. If two systems read/write to the same component/resource mutably without declared ordering (`.after()`, `.before()`, `.in_set()`), Bevy Lens flags it with a status indicator (🔴 / 🟡) and warns you of potential race conditions.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/popup.jpg" alt="Diagnostics and Rich Previews" width="600px">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/popup.webp" alt="Diagnostics and Rich Previews" width="600px">
 </p>
 
 ### 4. 📊 ECS Schedule & Dataflow Visualizer (Schedule Visualizer)
@@ -49,6 +49,20 @@ A static analysis tool that displays scheduling logic and data flow interactivel
 *   **Serial Chain Constraint Parser**: Parses Bevy system `.chain()` constraints, correctly chaining execution dependencies.
 *   **Data Race Ambiguity Warning**: Automatically highlights systems running concurrently (without order) that have read/write overlaps (Write-Write or Read-Write) on components/resources, styled in red and toggled with control switches.
 *   **Editor Sync Navigation**: Double-click any system node to instantly open the source file on the left editor column and scroll directly to its line number.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/schedule_visualizer.webp" alt="ECS Schedule Visualizer" width="600px">
+</p>
+
+### 5. 🕸️ Find Bevy Reference Graph Visualizer
+Right-click on any Bevy Component, Resource, or Event in the editor or the sidebar to launch the **Find Bevy Reference** graph.
+*   **Interactive Reference Graph**: Renders a rich directed graph using a force-directed layout, mapping exactly where your ECS elements are created, initialized, read, and mutably written across the entire codebase.
+*   **Intelligent ECS Query Parsing**: Perfectly locates `Query<&mut T, With<X>>`, `Commands::spawn`, `insert`, and `remove` calls to build precise Read/Write dependencies.
+*   **Rich Hover Tooltips**: Hover over graph nodes to see beautifully styled glass-morphism tooltips revealing the exact file location, code snippet, and access relation without switching context.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/bevy_reference.webp" alt="Find Bevy Reference" width="600px">
+</p>
 
 ---
 

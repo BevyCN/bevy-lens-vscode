@@ -4,6 +4,7 @@ import * as path from 'path';
 import { BevyParser, BevyElement } from './bevyParser';
 import { BevyGlobalRegistryProvider, BevySemanticExplorerProvider, BevySemanticExplorerDragAndDropController, ExplorerNode } from './bevyTreeView';
 import { ScheduleVisualizerPanel } from './scheduleVisualizer';
+import { ReferenceVisualizerPanel } from './referenceVisualizer';
 
 function checkIsBevyProject(workspaceFolders: readonly vscode.WorkspaceFolder[]): boolean {
     for (const folder of workspaceFolders) {
@@ -249,6 +250,76 @@ export async function activate(context: vscode.ExtensionContext) {
         ScheduleVisualizerPanel.createOrShow(context.extensionUri, cachedElements);
     });
     context.subscriptions.push(openVisualizerCmd);
+
+    // Register Find Bevy Reference command
+    const findReferencesCmd = vscode.commands.registerCommand('bevy-lens.findReferences', async (item?: any) => {
+        let targetName = '';
+        let targetType = 'Component';
+
+        if (item) {
+            if (item.elementData) {
+                // From Semantic Explorer (ExplorerNode)
+                targetName = item.elementData.name;
+                targetType = item.elementData.type;
+            } else if (item.name && item.type) {
+                // From Global Registry (BevyElement)
+                targetName = item.name;
+                targetType = item.type;
+            }
+        }
+        
+        // If targetName is still empty (e.g., from Editor Context menu where item might be just a Uri), fallback to Editor Context
+        if (!targetName) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                const document = editor.document;
+                const selection = editor.selection;
+                if (selection && !selection.isEmpty) {
+                    targetName = document.getText(selection).trim();
+                } else {
+                    const position = selection.active;
+                    const range = document.getWordRangeAtPosition(position);
+                    if (range) {
+                        targetName = document.getText(range).trim();
+                    } else {
+                        const lineText = document.lineAt(position.line).text;
+                        const charIdx = position.character;
+                        const wordRegex = /[a-zA-Z0-9_]+/g;
+                        let match;
+                        while ((match = wordRegex.exec(lineText)) !== null) {
+                            if (charIdx >= match.index && charIdx <= match.index + match[0].length) {
+                                targetName = match[0];
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (targetName) {
+                    const matchedElement = cachedElements.find(el => el.name === targetName);
+                    if (matchedElement) {
+                        targetType = matchedElement.type;
+                    }
+                }
+            }
+        }
+
+        if (!targetName) {
+            vscode.window.showWarningMessage('No Bevy element selected to find references.');
+            return;
+        }
+
+        const references = await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Bevy Lens: Finding references for '${targetName}'...`,
+            cancellable: false
+        }, async () => {
+            return await BevyParser.findReferences(targetName, targetType);
+        });
+
+        ReferenceVisualizerPanel.createOrShow(context.extensionUri, targetName, targetType, references);
+    });
+    context.subscriptions.push(findReferencesCmd);
 
     // 刷新命令
     const refreshCmd = vscode.commands.registerCommand('bevy-lens.refresh', async () => {

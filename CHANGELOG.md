@@ -2,6 +2,14 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.30] - 2026-06-23
+
+### Added
+- **Find Bevy Reference Graph**: Introduced a powerful new interactive graph visualizer that perfectly maps exactly where your ECS components, resources, and events are initialized, spawned, inserted, read, or mutably written.
+  - **High-Performance Scanning**: Engineered a chunk-based rapid static file scanner combined with `Query<&mut T, With<X>>` signature extraction, bypassing LSP constraints to deliver near-instant reference graph generation across massive workspaces.
+  - **Premium Rich Hover Tooltips**: Graph nodes are beautifully styled with glass-morphism HTML tooltips that display code snippets, file paths, and exact read/write relations natively inside the webview.
+  - **Seamless Integration**: Simply right-click any ECS type directly in the code editor, Semantic Explorer, or Global Registry to visualize its references.
+
 ## [0.1.28] - 2026-06-21
 
 ### Added

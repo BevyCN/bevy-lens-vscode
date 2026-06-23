@@ -2,7 +2,7 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
-## [0.1.30] - 2026-06-23
+## [0.1.31] - 2026-06-23
 
 ### Added
 - **Find Bevy Reference Graph**: Introduced a powerful new interactive graph visualizer that perfectly maps exactly where your ECS components, resources, and events are initialized, spawned, inserted, read, or mutably written.

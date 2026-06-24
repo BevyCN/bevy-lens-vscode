@@ -280,7 +280,7 @@ export class ReferenceVisualizerPanel {
 </head>
 <body>
     <div id="header">
-        <h1 id="title">Find Bevy Reference Visualizer</h1>
+        <h1 id="title">Find Bevy References Visualizer</h1>
     </div>
     <div id="container">
         <div id="mynetwork"></div>
@@ -309,7 +309,7 @@ export class ReferenceVisualizerPanel {
 
         function renderGraph(targetName, targetType, references) {
             const headerTitle = document.getElementById('title');
-            headerTitle.textContent = \`Find Bevy Reference: \${targetName} (\${targetType})\`;
+            headerTitle.textContent = \`Find Bevy References: \${targetName} (\${targetType})\`;
 
             // Clear sidebar
             const sidebar = document.getElementById('ref-list-container');

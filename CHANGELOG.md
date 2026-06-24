@@ -2,12 +2,20 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.33] - 2026-06-24
+
+### Added
+- **Native VS Code Reference Provider (Rust Analyzer) Integration**: Completely overhauled the `Find Bevy References` search engine. It now invokes the active Language Server (`rust-analyzer`) natively via `vscode.executeReferenceProvider` to pinpoint references instantly with 100% precision.
+- **Dual-Engine Search Architecture**: The extension gracefully falls back to the native Regex file-scanning engine if Rust Analyzer is unavailable, ensuring the tool is always usable even while RA is initializing.
+- **Improved Performance & Accuracy**: Thanks to AST-level matching, homonyms (like identical structs in different modules) and false positives in comments are entirely eliminated. The speed of generating the visual reference graph on massive workspaces is practically instantaneous.
+- **Renamed Feature**: The feature has been correctly renamed from `Find Bevy Reference` to `Find Bevy References` across the UI, README, and right-click context menus.
+
 ## [0.1.32] - 2026-06-23
 
 ### Added
 - **Bevy 0.19 Event & Message Syntax Support**: Upgraded the reference parser to fully support the latest Bevy 0.19 decoupled event system, successfully matching `MessageReader`, `MessageWriter`, `.send()`, `.write()`, `.trigger()` and `On<T>` observers natively.
 - **Dynamic Event Legends**: Reference graphs targeting `Message` or `Event` types now automatically switch their relationship legends and link colors to specifically represent `Send (Send/Trigger)` and `Receive (Read/Listen)` instead of generic Read/Write.
-- **Definition Source Nodes**: The `Find Bevy Reference` graph now guarantees the injection of a `Define` node at the apex, allowing users to trace precisely where an ECS element was originally declared as a struct/enum.
+- **Definition Source Nodes**: The `Find Bevy References` graph now guarantees the injection of a `Define` node at the apex, allowing users to trace precisely where an ECS element was originally declared as a struct/enum.
 
 ### Fixed
 - **Split Right Blank Window**: Fixed a bug where creating a split view of the reference graph resulted in an empty, non-functional Webview by establishing active state restoration pipelines on `onDidChangeViewState`.
@@ -18,7 +26,7 @@ All notable changes to the "bevy-lens" extension will be documented in this file
 ## [0.1.31] - 2026-06-23
 
 ### Added
-- **Find Bevy Reference Graph**: Introduced a powerful new interactive graph visualizer that perfectly maps exactly where your ECS components, resources, and events are initialized, spawned, inserted, read, or mutably written.
+- **Find Bevy References Graph**: Introduced a powerful new interactive graph visualizer that perfectly maps exactly where your ECS components, resources, and events are initialized, spawned, inserted, read, or mutably written.
   - **High-Performance Scanning**: Engineered a chunk-based rapid static file scanner combined with `Query<&mut T, With<X>>` signature extraction, bypassing LSP constraints to deliver near-instant reference graph generation across massive workspaces.
   - **Premium Rich Hover Tooltips**: Graph nodes are beautifully styled with glass-morphism HTML tooltips that display code snippets, file paths, and exact read/write relations natively inside the webview.
   - **Seamless Integration**: Simply right-click any ECS type directly in the code editor, Semantic Explorer, or Global Registry to visualize its references.

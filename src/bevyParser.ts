@@ -998,6 +998,191 @@ export class BevyParser {
     }
 
     /**
+     * Finds all references using vscode.Location[] native provider results
+     */
+    public static async findReferencesNative(targetName: string, targetType: string, locations: vscode.Location[]): Promise<BevyReference[]> {
+        const references: BevyReference[] = [];
+        const elements = this.assembleElementsFromCache();
+
+        // 1.5 Add "Define" relation for the target itself
+        const definitionEl = elements.find(el => el.name === targetName && (targetType ? el.type === targetType : true));
+        if (definitionEl) {
+            references.push({
+                sourceName: definitionEl.name,
+                sourceType: definitionEl.type,
+                filePath: definitionEl.filePath,
+                line: definitionEl.line,
+                relationType: 'Define',
+                details: `Defined in \`${definitionEl.filePath.split(/[\\\\/]/).pop()}\``
+            });
+        }
+
+        // Group locations by file path
+        const locationsByFile = new Map<string, vscode.Location[]>();
+        for (const loc of locations) {
+            const fsPath = loc.uri.fsPath;
+            if (!fsPath.endsWith('.rs')) continue;
+            if (!locationsByFile.has(fsPath)) {
+                locationsByFile.set(fsPath, []);
+            }
+            locationsByFile.get(fsPath)!.push(loc);
+        }
+
+        // Process each file
+        const processFile = async (filePath: string, locs: vscode.Location[]) => {
+            let content = '';
+            try {
+                content = await fs.promises.readFile(filePath, 'utf8');
+            } catch {
+                return;
+            }
+
+            const lines = content.split(/\r?\n/);
+            const functionRanges: Array<{ name: string; type: 'System' | 'AppInit' | 'Observer' | 'Unknown'; startLine: number; endLine: number }> = [];
+            const fileElements = elements.filter(el => el.filePath === filePath);
+            const systemsAndObservers = fileElements.filter(el => 
+                el.type === 'System' || el.type === 'MainSystem' || el.type === 'RenderSystem' ||
+                el.type === 'TestSystem' || el.type === 'TestMainSystem' || el.type === 'TestRenderSystem' ||
+                el.type === 'RenderGraph' || el.type === 'TestRenderGraph' ||
+                el.type === 'Observer' || el.type === 'TestObserver' ||
+                el.type === 'Plugin'
+            );
+
+            const sortedFunctions = [...systemsAndObservers].sort((a, b) => a.line - b.line);
+            for (let i = 0; i < sortedFunctions.length; i++) {
+                const current = sortedFunctions[i];
+                const startIdx = current.line - 1;
+                let endLine = lines.length;
+                if (i < sortedFunctions.length - 1) {
+                    endLine = sortedFunctions[i + 1].line - 1;
+                }
+                
+                let braceCount = 0;
+                let foundBrace = false;
+                for (let l = startIdx; l < endLine; l++) {
+                    const line = lines[l];
+                    const openCount = (line.match(/\{/g) || []).length;
+                    const closeCount = (line.match(/\}/g) || []).length;
+                    if (openCount > 0) foundBrace = true;
+                    braceCount += openCount - closeCount;
+                    if (foundBrace && braceCount <= 0) {
+                        endLine = l + 1;
+                        break;
+                    }
+                }
+
+                functionRanges.push({
+                    name: current.name,
+                    type: (current.type === 'Observer' || current.type === 'TestObserver') ? 'Observer' :
+                          (current.type === 'Plugin' ? 'AppInit' : 'System'),
+                    startLine: current.line,
+                    endLine: endLine
+                });
+            }
+
+            const getContainingFunction = (lineNum: number) => {
+                for (const range of functionRanges) {
+                    if (lineNum >= range.startLine && lineNum <= range.endLine) {
+                        return range;
+                    }
+                }
+                return null;
+            };
+
+            // Deduplicate line numbers (reference provider might return multiple locations on the same line)
+            const linesToProcess = new Set<number>();
+            for (const loc of locs) {
+                linesToProcess.add(loc.range.start.line + 1);
+            }
+
+            for (const lineNum of linesToProcess) {
+                if (lineNum - 1 >= lines.length) continue;
+                const lineContent = lines[lineNum - 1];
+
+                const containingFunc = getContainingFunction(lineNum);
+                let sourceName = containingFunc ? containingFunc.name : 'Unknown';
+                let sourceType = containingFunc ? containingFunc.type : 'Unknown';
+
+                if (sourceName === 'Unknown') {
+                    for (let backIdx = lineNum - 2; backIdx >= 0; backIdx--) {
+                        const backLine = lines[backIdx];
+                        const fnMatch = backLine.match(/fn\s+([a-zA-Z0-9_]+)\s*\(/);
+                        if (fnMatch) {
+                            sourceName = fnMatch[1];
+                            sourceType = 'System';
+                            break;
+                        }
+                        if (backLine.includes('struct ') || backLine.includes('impl ')) {
+                            break;
+                        }
+                    }
+                }
+
+                // Default relation is Read, but we check if it's mutating or writing
+                let relationType: 'Init' | 'Create' | 'Read' | 'Write' | 'Define' | 'Send' | 'Receive' = 'Read';
+                let details = `Referenced: \`${lineContent.trim()}\``;
+
+                // Init/Insert Resource
+                if (lineContent.match(/\.(init_resource|insert_resource|init_non_send_resource|insert_non_send_resource)/)) {
+                    relationType = 'Init';
+                    sourceName = sourceName === 'Unknown' ? 'App' : sourceName;
+                    sourceType = sourceType === 'Unknown' ? 'AppInit' : sourceType;
+                    details = `Initialized: \`${lineContent.trim()}\``;
+                }
+                // Spawn/Insert
+                else if (lineContent.match(/\.(spawn|insert|spawn_empty)\(/)) {
+                    relationType = 'Create';
+                    sourceType = sourceType === 'Unknown' ? 'System' : sourceType;
+                    details = `Inserted/Created: \`${lineContent.trim()}\``;
+                }
+                // Remove
+                else if (lineContent.match(/\.(remove|remove_resource)::</)) {
+                    relationType = 'Write';
+                    sourceType = sourceType === 'Unknown' ? 'System' : sourceType;
+                    details = `Removed: \`${lineContent.trim()}\``;
+                }
+                // Events & Messages
+                else if (targetType === 'Event' || targetType === 'Message') {
+                    if (lineContent.includes(`EventReader<`) || lineContent.includes(`MessageReader<`) || lineContent.includes(`Messages<`) || lineContent.includes(`Trigger<`) || lineContent.includes(`On<`) || lineContent.includes(`.read()`)) {
+                        relationType = 'Receive';
+                        sourceType = sourceType === 'Unknown' ? 'System' : sourceType;
+                        details = `Receives/Listens: \`${lineContent.trim()}\``;
+                    } else if (lineContent.includes(`EventWriter<`) || lineContent.includes(`MessageWriter<`) || lineContent.includes(`.send`) || lineContent.includes(`.write`) || lineContent.includes(`.trigger`)) {
+                        relationType = 'Send';
+                        sourceType = sourceType === 'Unknown' ? 'System' : sourceType;
+                        details = `Sends/Triggers: \`${lineContent.trim()}\``;
+                    } else if (lineContent.match(/\.(add_event|add_message)\s*</)) {
+                        relationType = 'Define';
+                        sourceName = sourceName === 'Unknown' ? 'App' : sourceName;
+                        sourceType = sourceType === 'Unknown' ? 'AppInit' : sourceType;
+                        details = `Defined/Registered: \`${lineContent.trim()}\``;
+                    }
+                }
+                // Check if it's a Mut parameter (we don't have signature metadata mapped here easily, but we can check if line has ResMut or Query with mut)
+                else if (lineContent.includes(`ResMut<`) || lineContent.includes(`&mut `) || lineContent.includes(`Query<`)) {
+                    if (lineContent.includes(`ResMut<${targetName}>`) || lineContent.match(new RegExp(`&mut\\s+${targetName}\\b`))) {
+                        relationType = 'Write';
+                        details = `Mutably accessed: \`${lineContent.trim()}\``;
+                    }
+                }
+                
+                references.push({
+                    sourceName,
+                    sourceType: sourceType === 'Unknown' ? 'System' : sourceType,
+                    filePath,
+                    line: lineNum,
+                    relationType,
+                    details
+                });
+            }
+        };
+
+        const tasks = Array.from(locationsByFile.entries()).map(([fp, locs]) => processFile(fp, locs));
+        await Promise.all(tasks);
+        return references;
+    }
+
+    /**
      * Finds all references of a Bevy element (Component, Resource, Asset, etc.) in the workspace,
      * identifying if it is initialized, created/spawned, mutably written, or read.
      */

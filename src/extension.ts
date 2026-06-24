@@ -255,6 +255,8 @@ export async function activate(context: vscode.ExtensionContext) {
     const findReferencesCmd = vscode.commands.registerCommand('bevy-lens.findReferences', async (item?: any) => {
         let targetName = '';
         let targetType = 'Component';
+        let targetUri: vscode.Uri | undefined;
+        let targetPosition: vscode.Position | undefined;
 
         if (item) {
             if (item.elementData) {
@@ -266,24 +268,42 @@ export async function activate(context: vscode.ExtensionContext) {
                 targetName = item.name;
                 targetType = item.type;
             }
+
+            if (targetName) {
+                const matchedElement = cachedElements.find(el => el.name === targetName);
+                if (matchedElement && matchedElement.filePath && matchedElement.line) {
+                    targetUri = vscode.Uri.file(matchedElement.filePath);
+                    try {
+                        const content = require('fs').readFileSync(matchedElement.filePath, 'utf8');
+                        const lines = content.split(/\r?\n/);
+                        const lineText = lines[matchedElement.line - 1];
+                        const col = lineText.indexOf(targetName);
+                        targetPosition = new vscode.Position(matchedElement.line - 1, col >= 0 ? col : 0);
+                    } catch (e) {
+                        targetPosition = new vscode.Position(matchedElement.line - 1, 0);
+                    }
+                }
+            }
         }
         
-        // If targetName is still empty (e.g., from Editor Context menu where item might be just a Uri), fallback to Editor Context
-        if (!targetName) {
+        // If targetUri is not set, fallback to Editor Context
+        if (!targetUri || !targetPosition) {
             const editor = vscode.window.activeTextEditor;
             if (editor) {
                 const document = editor.document;
                 const selection = editor.selection;
+                targetUri = document.uri;
+                targetPosition = selection.active;
+
                 if (selection && !selection.isEmpty) {
                     targetName = document.getText(selection).trim();
                 } else {
-                    const position = selection.active;
-                    const range = document.getWordRangeAtPosition(position);
+                    const range = document.getWordRangeAtPosition(targetPosition);
                     if (range) {
                         targetName = document.getText(range).trim();
                     } else {
-                        const lineText = document.lineAt(position.line).text;
-                        const charIdx = position.character;
+                        const lineText = document.lineAt(targetPosition.line).text;
+                        const charIdx = targetPosition.character;
                         const wordRegex = /[a-zA-Z0-9_]+/g;
                         let match;
                         while ((match = wordRegex.exec(lineText)) !== null) {
@@ -314,6 +334,21 @@ export async function activate(context: vscode.ExtensionContext) {
             title: `Bevy Lens: Finding references for '${targetName}'...`,
             cancellable: false
         }, async () => {
+            if (targetUri && targetPosition) {
+                try {
+                    const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+                        'vscode.executeReferenceProvider',
+                        targetUri,
+                        targetPosition
+                    );
+                    if (locations && locations.length > 0) {
+                        return await BevyParser.findReferencesNative(targetName, targetType, locations);
+                    }
+                } catch (err) {
+                    console.error("Native reference provider failed, falling back to regex scanner", err);
+                }
+            }
+            // Fallback
             return await BevyParser.findReferences(targetName, targetType);
         });
 

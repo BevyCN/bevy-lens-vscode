@@ -54,14 +54,14 @@ A static analysis tool that displays scheduling logic and data flow interactivel
   <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/schedule_visualizer.webp" alt="ECS Schedule Visualizer" width="600px">
 </p>
 
-### 5. 🕸️ Find Bevy Reference Graph Visualizer
-Right-click on any Bevy Component, Resource, or Event in the editor or the sidebar to launch the **Find Bevy Reference** graph.
+### 5. 🕸️ Find Bevy References Graph Visualizer
+Right-click on any Bevy Component, Resource, or Event in the editor or the sidebar to launch the **Find Bevy References** graph.
 *   **Interactive Reference Graph**: Renders a rich directed graph using a force-directed layout, mapping exactly where your ECS elements are created, initialized, read, and mutably written across the entire codebase.
 *   **Intelligent ECS Query Parsing**: Perfectly locates `Query<&mut T, With<X>>`, `Commands::spawn`, `insert`, and `remove` calls to build precise Read/Write dependencies.
 *   **Rich Hover Tooltips**: Hover over graph nodes to see beautifully styled glass-morphism tooltips revealing the exact file location, code snippet, and access relation without switching context.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/bevy_reference.webp" alt="Find Bevy Reference" width="600px">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/bevy_reference.webp" alt="Find Bevy References" width="600px">
 </p>
 
 ---

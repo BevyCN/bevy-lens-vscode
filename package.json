@@ -1,8 +1,8 @@
 {
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
-  "description": "A semantic Bevy ECS registry and explorer with docstring previews for VS Code.",
-  "version": "0.1.32",
+  "description": "The Ultimate Bevy Engine Semantic Explorer and Visualizer for VS Code.",
+  "version": "0.1.33",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -147,7 +147,7 @@
       },
       {
         "command": "bevy-lens.findReferences",
-        "title": "Find Bevy Reference",
+        "title": "Find Bevy References",
         "icon": "$(references)"
       }
     ],

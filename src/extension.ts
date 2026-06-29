@@ -251,7 +251,22 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(openVisualizerCmd);
 
-    // Register Find Bevy Reference command
+    context.subscriptions.push(vscode.commands.registerCommand('bevy-lens.revealInSemanticExplorer', async (uri: vscode.Uri) => {
+        if (!uri && vscode.window.activeTextEditor) {
+            uri = vscode.window.activeTextEditor.document.uri;
+        }
+        if (!uri) return;
+
+        const node = semanticExplorerProvider.getFileNode(uri);
+        if (node) {
+            // Check if tree view is visible before revealing? reveal() will automatically open the view if it's hidden.
+            await explorerTreeView.reveal(node, { select: true, focus: true, expand: true });
+        } else {
+            vscode.window.showInformationMessage("This file is not in the current workspace or not indexed.");
+        }
+    }));
+
+    // Register Find Bevy References command
     const findReferencesCmd = vscode.commands.registerCommand('bevy-lens.findReferences', async (item?: any) => {
         let targetName = '';
         let targetType = 'Component';

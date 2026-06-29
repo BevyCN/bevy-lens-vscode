@@ -149,9 +149,35 @@
         "command": "bevy-lens.findReferences",
         "title": "Find Bevy References",
         "icon": "$(references)"
+      },
+      {
+        "command": "bevy-lens.revealInSemanticExplorer",
+        "title": "Reveal in Bevy Semantic Explorer",
+        "icon": "$(list-tree)"
       }
     ],
     "menus": {
+      "editor/title/context": [
+        {
+          "command": "bevy-lens.revealInSemanticExplorer",
+          "group": "navigation",
+          "when": "resourceExtname == .rs || resourceExtname == .wgsl || resourceExtname == .wesl"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "bevy-lens.revealInSemanticExplorer",
+          "group": "navigation",
+          "when": "resourceExtname == .rs || resourceExtname == .wgsl || resourceExtname == .wesl"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "bevy-lens.revealInSemanticExplorer",
+          "group": "navigation",
+          "when": "resourceExtname == .rs || resourceExtname == .wgsl || resourceExtname == .wesl"
+        }
+      ],
       "view/title": [
         {
           "command": "bevy-lens.search",

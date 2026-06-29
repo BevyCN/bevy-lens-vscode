@@ -193,7 +193,11 @@ export class BevyGlobalRegistryProvider implements vscode.TreeDataProvider<Regis
     constructor(private readonly context: vscode.ExtensionContext) {}
 
     public updateData(elements: BevyElement[]) {
-        this.elements = elements;
+        const unique = new Map<string, BevyElement>();
+        for (const e of elements) {
+            unique.set(`${e.filePath}:${e.name}:${e.type}`, e);
+        }
+        this.elements = Array.from(unique.values());
         this.rebuildDiagnosticsCache();
         this.refresh();
     }
@@ -672,7 +676,11 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
     }
 
     public updateData(elements: BevyElement[], workspaceRoot: string) {
-        this.elements = elements;
+        const unique = new Map<string, BevyElement>();
+        for (const e of elements) {
+            unique.set(`${e.filePath}:${e.name}:${e.type}`, e);
+        }
+        this.elements = Array.from(unique.values());
         this.workspaceRoot = normalizePath(workspaceRoot);
         this.nodeMap.clear();
         this.rebuildDiagnosticsCache();
@@ -681,6 +689,19 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
 
     public getWorkspaceRoot(): string {
         return this.workspaceRoot;
+    }
+
+    public getFileNode(uri: vscode.Uri): ExplorerNode | undefined {
+        const pathStr = normalizePath(uri.fsPath);
+        if (!pathStr.startsWith(this.workspaceRoot)) return undefined;
+
+        const key = this.getMapKey(pathStr);
+        let node = this.nodeMap.get(key);
+        if (!node) {
+            node = new ExplorerNode(uri.fsPath, path.basename(uri.fsPath), 'file', uri.fsPath);
+            this.nodeMap.set(key, node);
+        }
+        return node;
     }
 
     private rebuildDiagnosticsCache() {

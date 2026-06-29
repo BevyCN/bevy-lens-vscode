@@ -2,6 +2,16 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.1.34] - 2026-06-29
+
+### Added
+- **Reveal in Bevy Semantic Explorer**: Added a new right-click context menu command (available in Editor Tabs, Editor Text, and VS Code Explorer). You can now instantly locate and focus on the current file directly within the Bevy Semantic Explorer tree.
+
+### Fixed
+- **Tree View Identity Cache Bug**: Fixed a severe core issue in VS Code's `TreeDataProvider` implementation where the extension would fail to auto-expand deep directories due to object identity mismatches in memory. The tree navigation is now instantaneous and flawlessly tracks active editors across all depths.
+- **Race Condition in Reveal**: Fixed a UI race condition where revealing a node while the panel was hidden (or rapidly switching tabs) would cause the jump to randomly fail or stop at the root directory.
+- **Duplicate ID Registration**: Fixed a bug where duplicate elements in identical files would crash the Tree View with an `is already registered` exception.
+
 ## [0.1.33] - 2026-06-24
 
 ### Added

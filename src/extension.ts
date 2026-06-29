@@ -257,13 +257,22 @@ export async function activate(context: vscode.ExtensionContext) {
         }
         if (!uri) return;
 
-        const node = semanticExplorerProvider.getFileNode(uri);
-        if (node) {
-            // Check if tree view is visible before revealing? reveal() will automatically open the view if it's hidden.
-            await explorerTreeView.reveal(node, { select: true, focus: true, expand: true });
-        } else {
-            vscode.window.showInformationMessage("This file is not in the current workspace or not indexed.");
-        }
+        // 强行展开插件面板
+        await vscode.commands.executeCommand('bevySemanticExplorer.focus');
+
+        // 延迟触发 reveal，解决 VSCode 树视图初始化阶段展开失效的并发竞态问题
+        setTimeout(() => {
+            // 使用 findFileNode 创建或获取节点
+            const node = semanticExplorerProvider.findFileNode(uri.fsPath);
+            if (node) {
+                explorerTreeView.reveal(node, { select: true, focus: true, expand: true }).then(
+                    () => {},
+                    (err) => console.warn('Reveal command failed:', err)
+                );
+            } else {
+                vscode.window.showInformationMessage("This file is not in the current workspace or not indexed.");
+            }
+        }, 300);
     }));
 
     // Register Find Bevy References command
@@ -436,7 +445,11 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(fileWatcher);
 
     // 自动高亮并定位当前编辑的文件节点
+    let revealTimeout: NodeJS.Timeout | undefined;
     const revealActiveEditor = (force = false) => {
+        if (revealTimeout) {
+            clearTimeout(revealTimeout);
+        }
 
         const editor = vscode.window.activeTextEditor;
         if (!editor) { return; }
@@ -447,19 +460,21 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        const filePath = editor.document.uri.fsPath;
-        const fileNode = semanticExplorerProvider.findFileNode(filePath);
-        
-        if (fileNode) {
-            explorerTreeView.reveal(fileNode, {
-                select: true,
-                focus: false,
-                expand: true
-            }).then(
-                () => {},
-                (err) => console.warn('Reveal file node failed:', err)
-            );
-        }
+        revealTimeout = setTimeout(() => {
+            const filePath = editor.document.uri.fsPath;
+            const fileNode = semanticExplorerProvider.findFileNode(filePath);
+            
+            if (fileNode) {
+                explorerTreeView.reveal(fileNode, {
+                    select: true,
+                    focus: false,
+                    expand: true
+                }).then(
+                    () => {},
+                    (err) => console.warn('Reveal file node failed:', err)
+                );
+            }
+        }, 150);
     };
 
     // 6. 监听当前激活编辑器的变化 (双向定位)

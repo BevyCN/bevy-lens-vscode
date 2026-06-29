@@ -691,19 +691,6 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
         return this.workspaceRoot;
     }
 
-    public getFileNode(uri: vscode.Uri): ExplorerNode | undefined {
-        const pathStr = normalizePath(uri.fsPath);
-        if (!pathStr.startsWith(this.workspaceRoot)) return undefined;
-
-        const key = this.getMapKey(pathStr);
-        let node = this.nodeMap.get(key);
-        if (!node) {
-            node = new ExplorerNode(uri.fsPath, path.basename(uri.fsPath), 'file', uri.fsPath);
-            this.nodeMap.set(key, node);
-        }
-        return node;
-    }
-
     private rebuildDiagnosticsCache() {
         this.diagnosticsCache.clear();
         const files = new Set(this.elements.map(e => normalizePath(e.filePath)));
@@ -995,12 +982,24 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
                 
                 for (const b of meta.bindings) {
                     const key = `${el.filePath}:binding:${b.binding}:${b.name}`;
-                    nodes.push(new ExplorerNode(key, `@binding(${b.binding}) ${b.name}`, 'shaderBinding', el.filePath, el, b, undefined));
+                    const mapKey = this.getMapKey(key);
+                    let bNode = this.nodeMap.get(mapKey);
+                    if (!bNode) {
+                        bNode = new ExplorerNode(key, `@binding(${b.binding}) ${b.name}`, 'shaderBinding', el.filePath, el, b, undefined);
+                        this.nodeMap.set(mapKey, bNode);
+                    }
+                    nodes.push(bNode);
                 }
                 
                 for (const ep of meta.entryPoints) {
                     const key = `${el.filePath}:entry:${ep.name}`;
-                    nodes.push(new ExplorerNode(key, ep.name, 'shaderEntryPoint', el.filePath, el, undefined, ep));
+                    const mapKey = this.getMapKey(key);
+                    let epNode = this.nodeMap.get(mapKey);
+                    if (!epNode) {
+                        epNode = new ExplorerNode(key, ep.name, 'shaderEntryPoint', el.filePath, el, undefined, ep);
+                        this.nodeMap.set(mapKey, epNode);
+                    }
+                    nodes.push(epNode);
                 }
                 
                 return nodes;
@@ -1013,8 +1012,12 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             const fileElements = this.elements.filter(e => normalizePath(e.filePath) === targetPath);
             return fileElements.map(el => {
                 const key = `${el.filePath}:${el.name}:${el.type}`;
-                const elNode = new ExplorerNode(key, el.name, 'element', el.filePath, el);
-                this.nodeMap.set(this.getMapKey(key), elNode);
+                const mapKey = this.getMapKey(key);
+                let elNode = this.nodeMap.get(mapKey);
+                if (!elNode) {
+                    elNode = new ExplorerNode(key, el.name, 'element', el.filePath, el);
+                    this.nodeMap.set(mapKey, elNode);
+                }
                 return elNode;
             });
         }
@@ -1043,12 +1046,20 @@ export class BevySemanticExplorerProvider implements vscode.TreeDataProvider<Exp
             }
 
             if (stat.isDirectory()) {
-                const dirNode = new ExplorerNode(fullPath, item, 'directory', fullPath);
-                this.nodeMap.set(this.getMapKey(fullPath), dirNode);
+                const key = this.getMapKey(fullPath);
+                let dirNode = this.nodeMap.get(key);
+                if (!dirNode) {
+                    dirNode = new ExplorerNode(fullPath, item, 'directory', fullPath);
+                    this.nodeMap.set(key, dirNode);
+                }
                 dirs.push(dirNode);
             } else if (stat.isFile()) {
-                const fileNode = new ExplorerNode(fullPath, item, 'file', fullPath);
-                this.nodeMap.set(this.getMapKey(fullPath), fileNode);
+                const key = this.getMapKey(fullPath);
+                let fileNode = this.nodeMap.get(key);
+                if (!fileNode) {
+                    fileNode = new ExplorerNode(fullPath, item, 'file', fullPath);
+                    this.nodeMap.set(key, fileNode);
+                }
                 files.push(fileNode);
             }
         }

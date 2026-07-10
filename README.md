@@ -14,7 +14,8 @@ Install: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemNa
 
 The **BEVY SEMANTICS** view lives inside VS Code's Explorer container and presents only indexed semantic data:
 
-- Groups elements by their nearest Cargo crate across all workspace folders.
+- Preserves the hierarchy as `Cargo crate → source directories → source file → Bevy elements` across all workspace folders.
+- Shows only the file basename at the file level; paths such as `src/ui/menu.rs` are represented by nested `src → ui → menu.rs` nodes instead of one long label.
 - Includes only files that contain recognized Bevy elements; it does not duplicate the physical directory tree.
 - Uses VS Code Theme Icons and the active file icon theme for native alignment and appearance.
 - Expanding the view or switching the active editor reveals the corresponding indexed source file.
@@ -124,7 +125,7 @@ Run **Find Bevy References** from the editor, Global Registry, or Bevy Semantics
 
 ## Release notes
 
-See [CHANGELOG.md](CHANGELOG.md) for release history. Version `0.2.0` introduces the Explorer-hosted semantic view and removes the duplicated custom file manager and templates.
+See [CHANGELOG.md](CHANGELOG.md) for release history. Version `0.2.1` refines the Explorer-hosted semantic view with directory hierarchy, active-file synchronization, and richer hover details.
 
 ## License
 

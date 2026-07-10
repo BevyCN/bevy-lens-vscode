@@ -2,11 +2,19 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.2.1] - 2026-07-10
+
+### Improved
+- Restored the semantic source hierarchy as **Cargo crate → directories → file → Bevy elements**, keeping thousands of indexed files manageable and showing only file basenames.
+- Added active-editor synchronization when the Explorer-hosted semantic view is expanded or visible.
+- Unified semantic element hover cards with the Global Registry and added rich file, shader-binding, and entry-point details.
+- Standardized semantic-tree icons on VS Code Theme Icons to preserve native alignment.
+
 ## [0.2.0] - 2026-07-10
 
 ### Changed
 - Replaced the duplicated physical file manager with a read-only **Bevy Semantics** view in VS Code's native Explorer container.
-- Reorganized the semantic hierarchy as **Cargo crate → source file → Bevy element**, with multi-root workspace support and stable reveal/navigation behavior.
+- Reorganized the semantic hierarchy as **Cargo crate → source directories → source file → Bevy element**, with multi-root workspace support, basename-only file labels, and stable reveal/navigation behavior.
 - Added Explorer synchronization: expanding the Bevy Semantics view or switching the active source file reveals the matching indexed file without stealing editor focus.
 - Unified semantic-element hover cards with the Global Registry, including documentation, schedules, ordering, data access, shader metadata, and diagnostics; file and shader-child nodes now have dedicated rich hover details.
 - Kept the **Bevy Global Registry** and visualizers in the dedicated Bevy Lens Activity Bar for fast project-wide lookup.

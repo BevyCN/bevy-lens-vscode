@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { BevyElement } from './bevyParser';
 import { buildElementTooltip } from './bevyTreeView';
 
-type SemanticNodeKind = 'crate' | 'file' | 'element' | 'shaderBinding' | 'shaderEntryPoint';
+type SemanticNodeKind = 'crate' | 'directory' | 'file' | 'element' | 'shaderBinding' | 'shaderEntryPoint';
 
 function normalizePath(value: string): string {
     const normalized = path.normalize(value);
@@ -36,6 +36,7 @@ export class BevySemanticViewProvider implements vscode.TreeDataProvider<Semanti
     private roots: SemanticNode[] = [];
     private readonly nodes = new Map<string, SemanticNode>();
     private readonly fileNodes = new Map<string, SemanticNode>();
+    private readonly fileCounts = new Map<string, number>();
     private readonly diagnostics = new Map<string, readonly vscode.Diagnostic[]>();
     private diagnosticsTimer: NodeJS.Timeout | undefined;
 
@@ -47,6 +48,7 @@ export class BevySemanticViewProvider implements vscode.TreeDataProvider<Semanti
 
         this.nodes.clear();
         this.fileNodes.clear();
+        this.fileCounts.clear();
 
         const crateGroups = new Map<string, BevyElement[]>();
         for (const element of unique.values()) {
@@ -74,8 +76,32 @@ export class BevySemanticViewProvider implements vscode.TreeDataProvider<Semanti
                 const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(sample.filePath));
                 const base = sample.crateRoot || workspaceFolder?.uri.fsPath || path.dirname(sample.filePath);
                 const relativePath = path.relative(base, sample.filePath) || path.basename(sample.filePath);
-                const fileNode = new SemanticNode(`file:${fileKey}`, 'file', relativePath, crateNode, undefined, sample.filePath);
-                crateNode.children.push(fileNode);
+                const segments = relativePath.split(path.sep).filter(Boolean);
+                const fileName = segments.pop() || path.basename(sample.filePath);
+                let parent = crateNode;
+                let currentPath = base;
+
+                for (const segment of segments) {
+                    currentPath = path.join(currentPath, segment);
+                    const directoryId = `directory:${normalizePath(currentPath)}`;
+                    let directoryNode = this.nodes.get(directoryId);
+                    if (!directoryNode) {
+                        directoryNode = new SemanticNode(
+                            directoryId,
+                            'directory',
+                            segment,
+                            parent,
+                            undefined,
+                            currentPath
+                        );
+                        parent.children.push(directoryNode);
+                        this.nodes.set(directoryId, directoryNode);
+                    }
+                    parent = directoryNode;
+                }
+
+                const fileNode = new SemanticNode(`file:${fileKey}`, 'file', fileName, parent, undefined, sample.filePath);
+                parent.children.push(fileNode);
                 this.nodes.set(fileNode.id, fileNode);
                 this.fileNodes.set(fileKey, fileNode);
 
@@ -92,7 +118,8 @@ export class BevySemanticViewProvider implements vscode.TreeDataProvider<Semanti
                 }
             }
 
-            crateNode.children.sort((a, b) => a.label.localeCompare(b.label));
+            this.sortHierarchy(crateNode);
+            this.countFiles(crateNode);
             return crateNode;
         }).sort((a, b) => a.label.localeCompare(b.label));
 
@@ -153,7 +180,16 @@ export class BevySemanticViewProvider implements vscode.TreeDataProvider<Semanti
         if (node.kind === 'crate') {
             item.contextValue = 'bevyCrate';
             item.iconPath = new vscode.ThemeIcon('package');
-            item.description = `${node.children.length} files`;
+            item.description = `${this.fileCounts.get(node.id) || 0} files`;
+            return item;
+        }
+
+        if (node.kind === 'directory' && node.filePath) {
+            item.contextValue = 'bevyDirectory';
+            item.resourceUri = vscode.Uri.file(node.filePath);
+            item.iconPath = vscode.ThemeIcon.Folder;
+            item.description = `${this.fileCounts.get(node.id) || 0} files`;
+            item.tooltip = node.filePath;
             return item;
         }
 
@@ -204,6 +240,33 @@ export class BevySemanticViewProvider implements vscode.TreeDataProvider<Semanti
         }
 
         return item;
+    }
+
+    private sortHierarchy(node: SemanticNode): void {
+        node.children.sort((left, right) => {
+            const leftDirectory = left.kind === 'directory';
+            const rightDirectory = right.kind === 'directory';
+            if (leftDirectory !== rightDirectory) {
+                return leftDirectory ? -1 : 1;
+            }
+            return left.label.localeCompare(right.label);
+        });
+        for (const child of node.children) {
+            if (child.kind === 'directory') {
+                this.sortHierarchy(child);
+            }
+        }
+    }
+
+    private countFiles(node: SemanticNode): number {
+        if (node.kind === 'file') {
+            return 1;
+        }
+        const count = node.children.reduce((total, child) => total + this.countFiles(child), 0);
+        if (node.kind === 'crate' || node.kind === 'directory') {
+            this.fileCounts.set(node.id, count);
+        }
+        return count;
     }
 
     private addShaderChildren(parent: SemanticNode, element: BevyElement): void {

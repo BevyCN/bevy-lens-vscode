@@ -7,6 +7,7 @@ export interface BevyElement {
     type: 'Component' | 'Resource' | 'Event' | 'Message' | 'Plugin' | 'Shader' | 'Asset' | 'System' | 'State' | 'SystemParam' | 'Bundle' | 'SystemSet' | 'TestSystem' | 'TestComponent' | 'TestResource' | 'TestEvent' | 'TestSystemParam' | 'TestBundle' | 'TestSystemSet' | 'Observer' | 'TestObserver' | 'MainSystem' | 'RenderSystem' | 'TestMainSystem' | 'TestRenderSystem' | 'BSN' | 'TestBSN' | 'BSNList' | 'TestBSNList' | 'AppSettings' | 'TestAppSettings' | 'RenderGraph' | 'TestRenderGraph';
     filePath: string;
     crateName?: string; // 所属的 Crate 名称
+    crateRoot?: string; // 包含该元素的 Cargo crate 根目录
     sourceTarget?: { type: 'lib' | 'bin' | 'example'; name?: string }; // Rust 构建目标类型与名字
     line: number;
     description: string; // 首行注释摘要
@@ -46,6 +47,27 @@ export class BevyParser {
     private static addSystemsCache = new Map<string, Array<{ appName: string, phase: string, chainText: string, isRenderWorld: boolean }>>();
     private static addObserversCache = new Map<string, Array<{ chainText: string }>>();
 
+    private static isExcluded(uri: vscode.Uri): boolean {
+        const folder = vscode.workspace.getWorkspaceFolder(uri);
+        if (!folder) {
+            return true;
+        }
+        const relativePath = path.relative(folder.uri.fsPath, uri.fsPath).replace(/\\/g, '/');
+        const patterns = vscode.workspace.getConfiguration('bevyLens').get<string[]>('excludePaths', []);
+        return patterns.some(pattern => {
+            const normalized = pattern.replace(/\\/g, '/').replace(/^\.\//, '');
+            const expression = normalized
+                .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+                .replace(/\*\*\//g, '\u0000')
+                .replace(/\*\*/g, '\u0001')
+                .replace(/\*/g, '[^/]*')
+                .replace(/\u0000/g, '(?:.*/)?')
+                .replace(/\u0001/g, '.*');
+            const matcher = new RegExp(`^${expression}$`);
+            return matcher.test(relativePath) || matcher.test(`/${relativePath}`);
+        });
+    }
+
     /**
      * 递归扫描指定目录下的文件，并提取 Bevy 语义元素
      */
@@ -54,10 +76,22 @@ export class BevyParser {
         this.addSystemsCache.clear();
         this.addObserversCache.clear();
 
-        // 使用 VS Code 优化的 findFiles API，忽略 target, .git, node_modules 等目录
+        const config = vscode.workspace.getConfiguration('bevyLens');
+        const configuredExcludes = config.get<string[]>('excludePaths', [
+            '**/target/**',
+            '**/.git/**',
+            '**/node_modules/**'
+        ]).filter(Boolean);
+        const excludeGlob = configuredExcludes.length === 0
+            ? undefined
+            : configuredExcludes.length === 1
+                ? configuredExcludes[0]
+                : `{${configuredExcludes.join(',')}}`;
+
+        // 仅扫描会产生 Bevy 语义节点的文件，并遵循插件排除配置。
         const filesUris = await vscode.workspace.findFiles(
             '{**/*.rs,**/*.wgsl,**/*.wesl}',
-            '{**/target/**,**/.git/**,**/node_modules/**}',
+            excludeGlob,
             100000
         );
 
@@ -88,7 +122,7 @@ export class BevyParser {
             const ext = path.extname(filePath);
 
             // 如果文件已被删除，从缓存中清理
-            if (!fs.existsSync(filePath)) {
+            if (!fs.existsSync(filePath) || this.isExcluded(uri)) {
                 this.parsedFilesCache.delete(filePath);
                 this.addSystemsCache.delete(filePath);
                 this.addObserversCache.delete(filePath);
@@ -138,8 +172,8 @@ export class BevyParser {
         }
 
         // 2. 辅助缓存目录 -> crateName
-        const crateCache = new Map<string, string>();
-        const getCrateName = (filePath: string): string => {
+        const crateCache = new Map<string, { name: string; root: string }>();
+        const getCrateInfo = (filePath: string): { name: string; root: string } => {
             let dir = path.dirname(filePath);
             while (true) {
                 if (crateCache.has(dir)) {
@@ -151,9 +185,9 @@ export class BevyParser {
                         const content = fs.readFileSync(cargoPath, 'utf8');
                         const match = content.match(/^name\s*=\s*"([^"]+)"/m);
                         if (match) {
-                            const name = match[1];
-                            crateCache.set(dir, name);
-                            return name;
+                            const info = { name: match[1], root: dir };
+                            crateCache.set(dir, info);
+                            return info;
                         }
                     } catch (err) {
                         console.error('Failed to parse Cargo.toml for crate name:', cargoPath, err);
@@ -165,7 +199,11 @@ export class BevyParser {
                 }
                 dir = parent;
             }
-            return 'unknown';
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
+            return {
+                name: workspaceFolder?.name || 'workspace',
+                root: workspaceFolder?.uri.fsPath || path.dirname(filePath)
+            };
         };
 
         const getSourceTarget = (filePath: string): BevyElement['sourceTarget'] => {
@@ -211,8 +249,35 @@ export class BevyParser {
         };
 
         for (const element of elements) {
-            element.crateName = getCrateName(element.filePath);
+            const crate = getCrateInfo(element.filePath);
+            element.crateName = crate.name;
+            element.crateRoot = crate.root;
             element.sourceTarget = getSourceTarget(element.filePath);
+        }
+
+        // Bevy 0.19 stores Resource values as specially marked components. A Query<&R> can
+        // therefore conflict with ResMut<R>, so mirror known resource query access here.
+        const resourceNames = new Set(elements
+            .filter(element => element.type === 'Resource'
+                || element.type === 'TestResource'
+                || element.type === 'AppSettings'
+                || element.type === 'TestAppSettings')
+            .map(element => `${element.crateRoot || element.crateName}:${element.name}`));
+        for (const element of elements) {
+            const metadata = element.systemMetadata;
+            if (!metadata) continue;
+            for (const name of metadata.mutableComponents) {
+                const key = `${element.crateRoot || element.crateName}:${name}`;
+                if (resourceNames.has(key) && !metadata.mutableResources.includes(name)) {
+                    metadata.mutableResources.push(name);
+                }
+            }
+            for (const name of metadata.readableComponents) {
+                const key = `${element.crateRoot || element.crateName}:${name}`;
+                if (resourceNames.has(key) && !metadata.readableResources.includes(name)) {
+                    metadata.readableResources.push(name);
+                }
+            }
         }
 
         // 3. 全局后处理：链接 add_systems (0 I/O 纯内存运行)
@@ -222,7 +287,7 @@ export class BevyParser {
         const customSchedules = config.get<string[]>('customRenderGraphSchedules', []) || [];
 
         for (const [addSystemsFilePath, addSystemsList] of this.addSystemsCache.entries()) {
-            const addSystemsCrate = getCrateName(addSystemsFilePath);
+            const addSystemsCrate = getCrateInfo(addSystemsFilePath).name;
 
             for (const item of addSystemsList) {
                 const phase = item.phase;
@@ -619,10 +684,9 @@ export class BevyParser {
             }
 
             // 3. 解析 System 和 BSN
-            if (lineContent.trim().startsWith('pub fn ') || lineContent.trim().startsWith('fn ')) {
-                const fnMatch = lineContent.match(/(?:pub\s+)?fn\s+([A-Za-z0-9_]+)\s*\(/);
-                if (fnMatch) {
-                    const fnName = fnMatch[1];
+            const fnMatch = lineContent.match(/^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+([A-Za-z0-9_]+)\s*\(/);
+            if (fnMatch) {
+                const fnName = fnMatch[1];
 
                     // 优先检查是否为 BSN 宏关联函数
                     if (bsnFunctions.has(fnName)) {
@@ -646,12 +710,23 @@ export class BevyParser {
                     }
 
                     let fullSignature = '';
-                    for (let j = i; j < Math.min(lines.length, i + 10); j++) {
-                        fullSignature += ' ' + lines[j].trim();
-                        if (lines[j].includes('{') || lines[j].includes(')')) break;
+                    let signatureDepth = 0;
+                    let signatureStarted = false;
+                    for (let j = i; j < Math.min(lines.length, i + 50); j++) {
+                        const signatureLine = lines[j].trim();
+                        fullSignature += ' ' + signatureLine;
+                        for (const character of signatureLine) {
+                            if (character === '(') {
+                                signatureStarted = true;
+                                signatureDepth++;
+                            } else if (character === ')' && signatureStarted) {
+                                signatureDepth--;
+                            }
+                        }
+                        if (signatureStarted && signatureDepth <= 0) break;
                     }
 
-                    const isObserver = /\(\s*(?:mut\s+)?(?:[A-Za-z0-9_]+)\s*:\s*On\s*</.test(fullSignature);
+                    const isObserver = /\b(?:On|Trigger)\s*</.test(fullSignature);
 
                     const hasBevyParams = 
                         isObserver ||
@@ -661,9 +736,14 @@ export class BevyParser {
                         fullSignature.includes('Commands') || 
                         fullSignature.includes('EventReader<') || 
                         fullSignature.includes('EventWriter<') || 
+                        fullSignature.includes('MessageReader<') ||
+                        fullSignature.includes('MessageWriter<') ||
                         fullSignature.includes('Local<') ||
                         fullSignature.includes('NonSend<') ||
                         fullSignature.includes('NonSendMut<') ||
+                        fullSignature.includes('Single<') ||
+                        fullSignature.includes('Populated<') ||
+                        fullSignature.includes('&mut World') ||
                         fullSignature.includes('RenderContext');
 
                     if (hasBevyParams) {
@@ -712,7 +792,6 @@ export class BevyParser {
                             }
                         });
                     }
-                }
             }
 
             // 4. 解析 Message
@@ -852,6 +931,55 @@ export class BevyParser {
             });
         }
         this.addSystemsCache.set(filePath, addSystems);
+
+        // A zero-parameter or exclusive system is still a valid Bevy system. Recover functions that
+        // are explicitly registered in add_systems but were not identifiable from their parameters.
+        for (const registration of addSystems) {
+            const identifierRegex = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
+            let identifier: RegExpExecArray | null;
+            while ((identifier = identifierRegex.exec(registration.chainText)) !== null) {
+                const name = identifier[1];
+                if (['run_if', 'after', 'before', 'in_set', 'chain', 'ambiguous_with'].includes(name)) {
+                    continue;
+                }
+                const prefix = registration.chainText.slice(0, identifier.index);
+                if (/\.(?:run_if|after|before|in_set|ambiguous_with)\(\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*$/.test(prefix)) {
+                    continue;
+                }
+                if (elements.some(element => element.filePath === filePath && element.name === name)) {
+                    continue;
+                }
+                const declaration = new RegExp(`(?:pub(?:\\([^)]*\\))?\\s+)?(?:async\\s+)?(?:unsafe\\s+)?fn\\s+${name}\\s*\\(`).exec(content);
+                if (!declaration) {
+                    continue;
+                }
+                const line = content.slice(0, declaration.index).split(/\r?\n/).length;
+                const preceding = content.slice(Math.max(0, declaration.index - 500), declaration.index);
+                const test = /#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\][\s\S]*$/.test(preceding);
+                const type: BevyElement['type'] = registration.isRenderWorld
+                    ? (test ? 'TestRenderSystem' : 'RenderSystem')
+                    : (test ? 'TestMainSystem' : 'MainSystem');
+                elements.push({
+                    name,
+                    type,
+                    filePath,
+                    line,
+                    description: `${type} registered in ${registration.phase}`,
+                    docstring: `Bevy system registered in the \`${registration.phase}\` schedule.`,
+                    systemMetadata: {
+                        mutableResources: [],
+                        readableResources: [],
+                        mutableComponents: [],
+                        readableComponents: [],
+                        schedulePhase: registration.phase,
+                        belongsToSets: [],
+                        runConditions: [],
+                        runsAfter: [],
+                        runsBefore: []
+                    }
+                });
+            }
+        }
 
         const addObservers: Array<{ chainText: string }> = [];
         let obsSearchIdx = 0;
@@ -1123,7 +1251,7 @@ export class BevyParser {
                 let details = `Referenced: \`${lineContent.trim()}\``;
 
                 // Init/Insert Resource
-                if (lineContent.match(/\.(init_resource|insert_resource|init_non_send_resource|insert_non_send_resource)/)) {
+                if (lineContent.match(/\.(init_resource|insert_resource|init_non_send|insert_non_send|init_non_send_resource|insert_non_send_resource)/)) {
                     relationType = 'Init';
                     sourceName = sourceName === 'Unknown' ? 'App' : sourceName;
                     sourceType = sourceType === 'Unknown' ? 'AppInit' : sourceType;
@@ -1350,7 +1478,7 @@ export class BevyParser {
                 }
 
                 // Look for init_resource/insert_resource
-                const initMatch = lineContent.match(/\.(init_resource|insert_resource|init_non_send_resource|insert_non_send_resource)/);
+                const initMatch = lineContent.match(/\.(init_resource|insert_resource|init_non_send|insert_non_send|init_non_send_resource|insert_non_send_resource)/);
                 if (initMatch) {
                     references.push({
                         sourceName: sourceName === 'Unknown' ? 'App' : sourceName,

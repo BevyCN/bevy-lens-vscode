@@ -2,6 +2,29 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.2.0] - 2026-07-10
+
+### Changed
+- Replaced the duplicated physical file manager with a read-only **Bevy Semantics** view in VS Code's native Explorer container.
+- Reorganized the semantic hierarchy as **Cargo crate → source file → Bevy element**, with multi-root workspace support and stable reveal/navigation behavior.
+- Added Explorer synchronization: expanding the Bevy Semantics view or switching the active source file reveals the matching indexed file without stealing editor focus.
+- Unified semantic-element hover cards with the Global Registry, including documentation, schedules, ordering, data access, shader metadata, and diagnostics; file and shader-child nodes now have dedicated rich hover details.
+- Kept the **Bevy Global Registry** and visualizers in the dedicated Bevy Lens Activity Bar for fast project-wide lookup.
+- Removed custom file templates and all replicated file operations (create, rename, delete, clipboard, compare, terminal, and drag-and-drop); the native Explorer now owns file management.
+- Updated static analysis rules for Bevy 0.19, including `On<T>` observers, Message system parameters, `Single`/`Populated` parameters, the renamed non-send initialization APIs, BSN, App Settings, and registered zero-parameter systems.
+
+### Optimized
+- Semantic files are indexed once and grouped through precomputed crate/file maps instead of synchronously walking the entire workspace whenever a tree node expands.
+- Diagnostic updates now refresh only affected semantic file and element nodes.
+- `bevyLens.excludePaths` is now honored by both full and incremental indexing.
+- Cargo manifest, workspace-folder, and relevant configuration changes now trigger the appropriate reindex.
+
+### Fixed
+- Fixed multi-root workspaces only exposing the first workspace folder in the semantic view.
+- Fixed stale non-Rust file-tree entries by removing the duplicated physical tree entirely.
+- Fixed duplicate `editor/context` contribution keys that caused one editor command to overwrite another.
+- Removed destructive custom drop/overwrite/delete paths that could bypass the system trash or move external files unexpectedly.
+
 ## [0.1.34] - 2026-06-29
 
 ### Added

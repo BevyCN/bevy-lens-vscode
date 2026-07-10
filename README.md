@@ -1,64 +1,92 @@
 # Bevy Lens
 
-**Bevy Lens** is a lightweight, high-performance VS Code extension designed specifically for the **Bevy Game Engine**. By statically analyzing your Rust codebase, WGSL/WESL shaders, Bevy Lens maps your ECS universe into a dedicated sidebar—drastically reducing cognitive load and helping you keep track of your game's systems, components, resources, states, and more.
+**Bevy Lens** is a VS Code semantic navigation and visualization extension for **Bevy 0.19** projects. It statically indexes Rust, WGSL, and WESL source files to expose Bevy-specific types, systems, schedules, observers, shaders, and relationships without replacing VS Code's native file management experience.
 
-Official Website: [BevyCN](https://bevycn.com/)
+Official website: [BevyCN](https://bevycn.com/)
 
-Download: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bevycn.bevy-lens) | [Open VSX](https://open-vsx.org/extension/BevyCN/bevy-lens)
+Install: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bevycn.bevy-lens) | [Open VSX](https://open-vsx.org/extension/BevyCN/bevy-lens)
 
 ---
 
-## 🌟 Key Features
+## Features
 
-### 1. 🔍 Bevy Global Registry
-Get a centralized, organized view of all Bevy types defined in your project:
-*   **Structured Categories**: Automatically categorizes **Components**, **Resources**, **Events**, **States**, **Messages**, **Plugins**, **Shaders**, **Assets**, and **Systems**.
-*   **Multi-crate & Workspace Hierarchies**: Groups your ECS registry by Cargo crates, mapping structures directly under their respective packages.
-*   **Examples & Bins Sub-categorization**: Automatically isolates systems and types inside `examples/` and `src/bin/` into dedicated nested folders (e.g., `Example: ui/button`), ensuring that game logic and examples never clutter the core library tree.
-*   **Test Code Separation**: Scours `mod tests` and `#[cfg(test)]` modules to isolate and group test components, test resources, and test systems (under dedicated "Test ECS Types", "Test Systems", etc.) to keep production environments clean.
-*   **Fuzzy Search & Filtering**: Quickly filter down massive registries using positive (`Player`) and negative (`!Collision`) query selectors.
-*   **Code Navigation**: Click any item in the tree view to instantly jump directly to its definition in the editor.
+### Bevy Semantics in the native Explorer
+
+The **BEVY SEMANTICS** view lives inside VS Code's Explorer container and presents only indexed semantic data:
+
+- Groups elements by their nearest Cargo crate across all workspace folders.
+- Includes only files that contain recognized Bevy elements; it does not duplicate the physical directory tree.
+- Uses VS Code Theme Icons and the active file icon theme for native alignment and appearance.
+- Expanding the view or switching the active editor reveals the corresponding indexed source file.
+- Displays Rust Analyzer error and warning counts on file nodes.
+- Opens source definitions directly from file and element nodes.
+- Exposes WGSL/WESL bindings and vertex, fragment, and compute entry points.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/bevy_explorer.webp" alt="Bevy Semantics in the native Explorer" width="600px">
+</p>
+
+### Bevy Global Registry
+
+The dedicated Bevy Lens Activity Bar remains available for project-wide lookup:
+
+- Categorizes components, resources, App Settings, events, messages, states, bundles, assets, plugins, systems, system sets, system parameters, observers, shaders, BSN scenes, and render systems.
+- Groups results by Cargo crate and separates library, binary, example, and test targets.
+- Supports alphabetical or source-position sorting.
+- Supports positive and negative search filters such as `Player` and `!Test`.
+- Opens each result at its source definition.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/bevy_registry.webp" alt="Bevy Global Registry" width="600px">
 </p>
 
-### 2. 📁 Semantic Workspace Explorer
-An enhanced physical file explorer that reveals Bevy structures inline:
-*   **Inline File AST**: Expand `.rs`, `.wgsl`, and `.wesl` files to see what Bevy concepts are defined inside them.
-*   **Dynamic Synchronization**: Automatically reveals and focuses the active file in the sidebar explorer as you type or switch between tabs in your editor.
-*   **Custom Brand Icons**: Instantly differentiate between components, systems, and assets using dedicated VS Code codicons matching your active icon theme.
+### Bevy 0.19 semantic indexing
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/bevy_explorer.webp" alt="Semantic Workspace Explorer" width="600px">
-</p>
+The parser recognizes commonly used Bevy 0.19 patterns, including:
 
-### 3. 📝 Rich Previews, Shader Binding Bridge & Concurrency Diagnostics
-*   **Instant Documentation**: Displays the first line of your Rust triple-slash (`///`) docstrings beside registry items. Hovering over any item reveals the full Markdown documentation.
-*   **Shader Bridge & Entry Points**: Extracts `@binding` layouts (uniforms, textures, samplers) and registers entry points (`@vertex`, `@fragment`, `@compute`) including compute workgroup sizes (`@workgroup_size`), allowing seamless shader pipeline inspection.
-*   **Parallel Query Write-Conflict Linter**: Statically checks systems registered in the same schedule phase. If two systems read/write to the same component/resource mutably without declared ordering (`.after()`, `.before()`, `.in_set()`), Bevy Lens flags it with a status indicator (🔴 / 🟡) and warns you of potential race conditions.
+- `#[derive(Component)]`, `Resource`, `Event`, `Message`, `States`, `Bundle`, `Asset`, `SystemParam`, and `SystemSet`.
+- `Plugin` implementations and functions registered through `add_systems`.
+- Systems using `Query`, `Res`, `ResMut`, `Commands`, `Local`, `NonSend`, `Single`, `Populated`, message/event readers and writers, exclusive `&mut World`, and render contexts.
+- Zero-parameter systems explicitly registered through `add_systems`.
+- `On<T>` observers, legacy `Trigger<T>` signatures, `add_observer`, ordering modifiers, and observer run conditions.
+- `bsn!` and `bsn_list!` scene definitions.
+- App Settings types marked with `SettingsGroup`.
+- Bevy 0.19 resources-as-components access when evaluating query conflicts.
+- Main-world and render-world schedules, `.chain()`, `.after()`, `.before()`, `.in_set()`, and `.run_if()` metadata.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/systems_information.webp" alt="Diagnostics and Rich Previews" width="600px">
-</p>
+Bevy Lens uses lightweight static analysis rather than compiling Rust syntax. Macro-generated types, unusual aliases, or deeply dynamic registration code may require Rust Analyzer navigation as a fallback.
 
-### 4. 📊 ECS Schedule & Dataflow Visualizer (Schedule Visualizer)
-A static analysis tool that displays scheduling logic and data flow interactively:
-*   **Interactive DAG Layout**: Renders systems in a directed acyclic graph (DAG) using a beautiful force-directed layout, supporting smooth zooming, dragging, and physics animations.
-*   **Build Target Isolation**: Supports a target filter to isolate different `bin`, `example`, and `lib` systems to avoid false-positive warnings between independent executables.
-*   **Serial Chain Constraint Parser**: Parses Bevy system `.chain()` constraints, correctly chaining execution dependencies.
-*   **Data Race Ambiguity Warning**: Automatically highlights systems running concurrently (without order) that have read/write overlaps (Write-Write or Read-Write) on components/resources, styled in red and toggled with control switches.
-*   **Editor Sync Navigation**: Double-click any system node to instantly open the source file on the left editor column and scroll directly to its line number.
+### Diagnostics and documentation
+
+- Shows the first line of Rust `///` documentation beside registry elements.
+- Displays full documentation and relevant diagnostics in hover tooltips.
+- Optionally reports unordered systems in the same crate, Cargo target, and schedule when their component or resource access conflicts.
+- Keeps diagnostic refreshes incremental so unrelated tree nodes are not rebuilt.
+
+Conflict diagnostics are heuristic and disabled by default. Bevy itself remains the source of truth for schedule compatibility.
+
+### Schedule visualizer
+
+The schedule visualizer builds an interactive graph from indexed system metadata:
+
+- Separates `lib`, `bin`, and `example` targets.
+- Displays schedule phases and system ordering.
+- Visualizes `.chain()`, `.after()`, and `.before()` dependencies.
+- Highlights potential unordered read/write conflicts.
+- Navigates from graph nodes to source definitions.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/schedule_visualizer.webp" alt="ECS Schedule Visualizer" width="600px">
 </p>
 
-### 5. 🕸️ Find Bevy References Graph Visualizer
-Right-click on any Bevy Component, Resource, or Event in the editor or the sidebar to launch the **Find Bevy References** graph.
-*   **Interactive Reference Graph**: Renders a rich directed graph using a force-directed layout, mapping exactly where your ECS elements are created, initialized, read, and mutably written across the entire codebase.
-*   **Intelligent ECS Query Parsing**: Perfectly locates `Query<&mut T, With<X>>`, `Commands::spawn`, `insert`, and `remove` calls to build precise Read/Write dependencies.
-*   **Rich Hover Tooltips**: Hover over graph nodes to see beautifully styled glass-morphism tooltips revealing the exact file location, code snippet, and access relation without switching context.
+### Bevy reference graph
+
+Run **Find Bevy References** from the editor, Global Registry, or Bevy Semantics view:
+
+- Uses the active Rust language server reference provider when available.
+- Falls back to workspace static analysis when language-server results are unavailable.
+- Classifies definitions, initialization, creation, reads, writes, sends, and receives.
+- Navigates from graph nodes to the corresponding source location.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/BevyCN/bevy-lens-vscode/master/images/bevy_reference.webp" alt="Find Bevy References" width="600px">
@@ -66,28 +94,38 @@ Right-click on any Bevy Component, Resource, or Event in the editor or the sideb
 
 ---
 
-## ⚡ Requirements & Recommendations
+## Requirements
 
-*   **Rust & Bevy**: Projects built using Rust and the Bevy game engine.
-*   **Rust Analyzer (Recommended)**: For live compilation error/warning badges in the tree views, it is highly recommended to install the official [Rust Analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) extension.
-
----
-
-## ⚙️ Extension Settings
-
-This extension contributes the following settings:
-
-*   `bevyLens.excludePaths`: An array of glob patterns to exclude from scanning (defaults to `["**/target/**", "**/.git/**"]`).
-*   `bevyLens.enableConflictDiagnostics`: A boolean setting to enable static query read/write conflict warnings for parallel systems (defaults to `false`).
+- A Rust workspace using Bevy 0.19 or Bevy subcrates.
+- [Rust Analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) is recommended for diagnostics and precise reference-provider results.
 
 ---
 
-## 📅 Release Notes
+## Settings
 
-Please refer to [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
+- `bevyLens.excludePaths`: Glob patterns excluded from full and incremental indexing. Defaults to `**/target/**`, `**/.git/**`, and `**/node_modules/**`.
+- `bevyLens.enableConflictDiagnostics`: Enables heuristic system access-conflict diagnostics. Defaults to `false`.
+- `bevyLens.sortBy`: Sorts registry and per-file semantic elements by `alphabetical` or source `position`.
+- `bevyLens.customRenderGraphSchedules`: Additional schedule names that should be classified as render-graph schedules.
 
 ---
 
-## 📄 License
+## Commands
 
-This extension is licensed under the [MIT License](LICENSE).
+- **Refresh Bevy Lens**
+- **Search Bevy Elements...**
+- **Clear Search Filter**
+- **Change Sort Order...**
+- **Open Schedule Visualizer**
+- **Find Bevy References**
+- **Reveal in Bevy Semantic Explorer**
+
+---
+
+## Release notes
+
+See [CHANGELOG.md](CHANGELOG.md) for release history. Version `0.2.0` introduces the Explorer-hosted semantic view and removes the duplicated custom file manager and templates.
+
+## License
+
+Licensed under the [MIT License](LICENSE).

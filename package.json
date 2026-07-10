@@ -1,8 +1,8 @@
 {
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
-  "description": "The Ultimate Bevy Engine Semantic Explorer and Visualizer for VS Code.",
-  "version": "0.1.34",
+  "description": "Bevy 0.19 semantic navigation, registry, diagnostics, and visualizers for VS Code.",
+  "version": "0.2.0",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"
@@ -17,9 +17,6 @@
     "Linters"
   ],
   "icon": "resources/icon.png",
-  "activationEvents": [
-    "onStartupFinished"
-  ],
   "extensionKind": [
     "workspace"
   ],
@@ -40,10 +37,12 @@
           "id": "bevyGlobalRegistry",
           "name": "BEVY GLOBAL REGISTRY",
           "visibility": "visible"
-        },
+        }
+      ],
+      "explorer": [
         {
           "id": "bevySemanticExplorer",
-          "name": "BEVY SEMANTIC EXPLORER",
+          "name": "BEVY SEMANTICS",
           "visibility": "visible"
         }
       ]
@@ -65,34 +64,6 @@
         "icon": "$(clear-all)"
       },
       {
-        "command": "bevy-lens.explorer.newFile",
-        "title": "New File",
-        "icon": "$(new-file)"
-      },
-      {
-        "command": "bevy-lens.explorer.newFileFromTemplate",
-        "title": "New File from Template...",
-        "icon": "$(file-code)"
-      },
-      {
-        "command": "bevy-lens.explorer.newFolder",
-        "title": "New Folder",
-        "icon": "$(new-folder)"
-      },
-      {
-        "command": "bevy-lens.explorer.rename",
-        "title": "Rename..."
-      },
-      {
-        "command": "bevy-lens.explorer.delete",
-        "title": "Delete",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "bevy-lens.explorer.reveal",
-        "title": "Reveal in Explorer View"
-      },
-      {
         "command": "bevy-lens.changeSortOrder",
         "title": "Change Sort Order...",
         "icon": "$(sort-precedence)"
@@ -101,49 +72,6 @@
         "command": "bevy-lens.openScheduleVisualizer",
         "title": "Open Schedule Visualizer",
         "icon": "$(graph)"
-      },
-      {
-        "command": "bevy-lens.explorer.openToSide",
-        "title": "Open to the Side"
-      },
-      {
-        "command": "bevy-lens.explorer.openWith",
-        "title": "Open With..."
-      },
-      {
-        "command": "bevy-lens.explorer.openInTerminal",
-        "title": "Open in Integrated Terminal"
-      },
-      {
-        "command": "bevy-lens.explorer.cut",
-        "title": "Cut",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "bevy-lens.explorer.copy",
-        "title": "Copy",
-        "icon": "$(copy)"
-      },
-      {
-        "command": "bevy-lens.explorer.paste",
-        "title": "Paste",
-        "icon": "$(clippy)"
-      },
-      {
-        "command": "bevy-lens.explorer.selectForCompare",
-        "title": "Select for Compare"
-      },
-      {
-        "command": "bevy-lens.explorer.compareWithSelected",
-        "title": "Compare with Selected"
-      },
-      {
-        "command": "bevy-lens.explorer.copyPath",
-        "title": "Copy Path"
-      },
-      {
-        "command": "bevy-lens.explorer.copyRelativePath",
-        "title": "Copy Relative Path"
       },
       {
         "command": "bevy-lens.findReferences",
@@ -174,8 +102,13 @@
       "editor/context": [
         {
           "command": "bevy-lens.revealInSemanticExplorer",
-          "group": "navigation",
+          "group": "navigation@1",
           "when": "resourceExtname == .rs || resourceExtname == .wgsl || resourceExtname == .wesl"
+        },
+        {
+          "command": "bevy-lens.findReferences",
+          "group": "navigation@2",
+          "when": "editorTextFocus && resourceLangId == rust"
         }
       ],
       "view/title": [
@@ -195,170 +128,24 @@
           "group": "navigation@1.8"
         },
         {
-          "command": "bevy-lens.explorer.newFile",
-          "when": "view == bevySemanticExplorer",
-          "group": "navigation@1"
-        },
-        {
-          "command": "bevy-lens.explorer.newFileFromTemplate",
-          "when": "view == bevySemanticExplorer",
-          "group": "navigation@1.5"
-        },
-        {
-          "command": "bevy-lens.explorer.newFolder",
-          "when": "view == bevySemanticExplorer",
-          "group": "navigation@2"
+          "command": "bevy-lens.openScheduleVisualizer",
+          "when": "view == bevyGlobalRegistry || view == bevySemanticExplorer",
+          "group": "navigation@2.5"
         },
         {
           "command": "bevy-lens.refresh",
           "when": "view == bevyGlobalRegistry || view == bevySemanticExplorer",
           "group": "navigation@3"
-        },
-        {
-          "command": "bevy-lens.openScheduleVisualizer",
-          "when": "view == bevyGlobalRegistry || view == bevySemanticExplorer",
-          "group": "navigation@2.5"
         }
       ],
       "view/item/context": [
-        {
-          "command": "bevy-lens.explorer.newFile",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || !viewItem)",
-          "group": "1_new@1"
-        },
-        {
-          "command": "bevy-lens.explorer.newFileFromTemplate",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || !viewItem)",
-          "group": "1_new@2"
-        },
-        {
-          "command": "bevy-lens.explorer.newFolder",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || !viewItem)",
-          "group": "1_new@3"
-        },
-        {
-          "command": "bevy-lens.explorer.rename",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
-          "group": "2_modify"
-        },
-        {
-          "command": "bevy-lens.explorer.delete",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
-          "group": "3_delete"
-        },
-        {
-          "command": "bevy-lens.explorer.reveal",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
-          "group": "4_reveal"
-        },
-        {
-          "command": "bevy-lens.explorer.openToSide",
-          "when": "view == bevySemanticExplorer && viewItem == file",
-          "group": "0_open@1"
-        },
-        {
-          "command": "bevy-lens.explorer.openWith",
-          "when": "view == bevySemanticExplorer && viewItem == file",
-          "group": "0_open@2"
-        },
-        {
-          "command": "bevy-lens.explorer.openInTerminal",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file || !viewItem)",
-          "group": "0_open@3"
-        },
-        {
-          "command": "bevy-lens.explorer.cut",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
-          "group": "5_clipboard@1"
-        },
-        {
-          "command": "bevy-lens.explorer.copy",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
-          "group": "5_clipboard@2"
-        },
-        {
-          "command": "bevy-lens.explorer.paste",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file || !viewItem) && bevyLens.clipboardHasData",
-          "group": "5_clipboard@3"
-        },
-        {
-          "command": "bevy-lens.explorer.selectForCompare",
-          "when": "view == bevySemanticExplorer && viewItem == file",
-          "group": "6_compare@1"
-        },
-        {
-          "command": "bevy-lens.explorer.compareWithSelected",
-          "when": "view == bevySemanticExplorer && viewItem == file && bevyLens.compareSourceSelected",
-          "group": "6_compare@2"
-        },
-        {
-          "command": "bevy-lens.explorer.copyPath",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
-          "group": "7_path@1"
-        },
-        {
-          "command": "bevy-lens.explorer.copyRelativePath",
-          "when": "view == bevySemanticExplorer && (viewItem == directory || viewItem == file)",
-          "group": "7_path@2"
-        },
         {
           "command": "bevy-lens.findReferences",
           "when": "viewItem == bevyElement",
           "group": "navigation@1"
         }
-      ],
-      "editor/context": [
-        {
-          "command": "bevy-lens.findReferences",
-          "when": "editorTextFocus && resourceLangId == rust",
-          "group": "navigation"
-        }
       ]
     },
-    "keybindings": [
-      {
-        "command": "bevy-lens.explorer.copy",
-        "key": "ctrl+c",
-        "mac": "cmd+c",
-        "when": "view == bevySemanticExplorer && !inputFocus"
-      },
-      {
-        "command": "bevy-lens.explorer.cut",
-        "key": "ctrl+x",
-        "mac": "cmd+x",
-        "when": "view == bevySemanticExplorer && !inputFocus"
-      },
-      {
-        "command": "bevy-lens.explorer.paste",
-        "key": "ctrl+v",
-        "mac": "cmd+v",
-        "when": "view == bevySemanticExplorer && !inputFocus"
-      },
-      {
-        "command": "bevy-lens.explorer.delete",
-        "key": "delete",
-        "mac": "cmd+backspace",
-        "when": "view == bevySemanticExplorer && !inputFocus"
-      },
-      {
-        "command": "bevy-lens.explorer.rename",
-        "key": "f2",
-        "mac": "enter",
-        "when": "view == bevySemanticExplorer && !inputFocus"
-      },
-      {
-        "command": "bevy-lens.explorer.copyPath",
-        "key": "shift+alt+c",
-        "mac": "shift+cmd+c",
-        "when": "view == bevySemanticExplorer && !inputFocus"
-      },
-      {
-        "command": "bevy-lens.explorer.copyRelativePath",
-        "key": "ctrl+k ctrl+shift+c",
-        "mac": "cmd+k cmd+shift+c",
-        "when": "view == bevySemanticExplorer && !inputFocus"
-      }
-    ],
     "configuration": {
       "title": "Bevy Lens",
       "properties": {
@@ -366,9 +153,10 @@
           "type": "array",
           "default": [
             "**/target/**",
-            "**/.git/**"
+            "**/.git/**",
+            "**/node_modules/**"
           ],
-          "description": "Paths to exclude when scanning for Bevy assets."
+          "description": "Glob patterns excluded from Bevy semantic indexing."
         },
         "bevyLens.enableConflictDiagnostics": {
           "type": "boolean",

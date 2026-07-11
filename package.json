@@ -2,7 +2,7 @@
   "name": "bevy-lens",
   "displayName": "Bevy Lens",
   "description": "Bevy 0.19 semantic navigation, registry, diagnostics, and visualizers for VS Code.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "bevycn",
   "engines": {
     "vscode": "^1.75.0"

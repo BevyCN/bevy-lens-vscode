@@ -2,6 +2,19 @@
 
 All notable changes to the "bevy-lens" extension will be documented in this file.
 
+## [0.2.2] - 2026-07-11
+
+### Fixed
+- Fixed a reference visualizer bug where too many nodes caused the graph to rotate and vibrate endlessly in a circular orbit by completely disabling physics simulations.
+
+### Improved
+- Redesigned the reference visualizer graph layout to a structured workflow column style:
+  - Fixed the target node strictly in the center.
+  - Aligned write-related operations (`Write`, `Create`, `Send`, `Init`) to the left column.
+  - Aligned read-related operations (`Read`, `Receive`) to the right column.
+  - Aligned declarations (`Define`) to the top column.
+- Removed nested TS template escaping and simplified the webview scripts to use single-quote string concatenation, ensuring TypeScript build reliability.
+
 ## [0.2.1] - 2026-07-10
 
 ### Improved

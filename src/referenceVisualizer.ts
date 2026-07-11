@@ -325,7 +325,10 @@ export class ReferenceVisualizerPanel {
             // Add center target node
             nodes.push({
                 id: 'target',
-                label: \`\${targetName}\\n(\${targetType})\`,
+                label: targetName + '\\n(' + targetType + ')',
+                x: 0,
+                y: 0,
+                fixed: { x: true, y: true },
                 color: {
                     background: '#f59e0b',
                     border: '#d97706',
@@ -343,52 +346,54 @@ export class ReferenceVisualizerPanel {
             // Generate Dynamic Legend
             const legendContainer = document.getElementById('legendContainer');
             if (isEventOrMessage) {
-                legendContainer.innerHTML = \`
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #f59e0b;"></div>
-                        <span>Target: \${targetType}</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #fcd34d;"></div>
-                        <span>Define (Declaration)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #fb923c;"></div>
-                        <span>Send (Send/Trigger)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #60a5fa;"></div>
-                        <span>Receive (Read/Listen)</span>
-                    </div>
-                \`;
+                legendContainer.innerHTML = 
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #f59e0b;"></div>' +
+                        '<span>Target: ' + targetType + '</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #fcd34d;"></div>' +
+                        '<span>Define (Declaration)</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #fb923c;"></div>' +
+                        '<span>Send (Send/Trigger)</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #60a5fa;"></div>' +
+                        '<span>Receive (Read/Listen)</span>' +
+                    '</div>';
             } else {
-                legendContainer.innerHTML = \`
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #f59e0b;"></div>
-                        <span>Target: \${targetType}</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #fcd34d;"></div>
-                        <span>Define (Declaration)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #a78bfa;"></div>
-                        <span>Init (Initialize)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #34d399;"></div>
-                        <span>Create (Spawn/Insert)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #60a5fa;"></div>
-                        <span>Read (Res/Query)</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #fb923c;"></div>
-                        <span>Write (ResMut/Query/Remove)</span>
-                    </div>
-                \`;
+                legendContainer.innerHTML = 
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #f59e0b;"></div>' +
+                        '<span>Target: ' + targetType + '</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #fcd34d;"></div>' +
+                        '<span>Define (Declaration)</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #a78bfa;"></div>' +
+                        '<span>Init (Initialize)</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #34d399;"></div>' +
+                        '<span>Create (Spawn/Insert)</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #60a5fa;"></div>' +
+                        '<span>Read (Res/Query)</span>' +
+                    '</div>' +
+                    '<div class="legend-item">' +
+                        '<div class="legend-color" style="background-color: #fb923c;"></div>' +
+                        '<span>Write (ResMut/Query/Remove)</span>' +
+                    '</div>';
             }
+
+            const leftGroup = [];
+            const rightGroup = [];
+            const topGroup = [];
 
             references.forEach((ref, index) => {
                 const relationColorMap = {
@@ -404,15 +409,15 @@ export class ReferenceVisualizerPanel {
 
                 // Add to sidebar
                 const refItem = document.createElement('div');
-                refItem.className = \`ref-item relation-\${ref.relationType}\`;
-                refItem.innerHTML = \`
-                    <div class="ref-name">\${ref.sourceName}</div>
-                    <div class="ref-meta">
-                        <span>Type: \${ref.sourceType}</span>
-                        <span>Relation: \${ref.relationType}</span>
-                    </div>
-                    \${ref.details ? \`<div class="ref-details">\${escapeHtml(ref.details)}</div>\` : ''}
-                \`;
+                refItem.className = 'ref-item relation-' + ref.relationType;
+                refItem.innerHTML = 
+                    '<div class="ref-name">' + ref.sourceName + '</div>' +
+                    '<div class="ref-meta">' +
+                        '<span>Type: ' + ref.sourceType + '</span>' +
+                        '<span>Relation: ' + ref.relationType + '</span>' +
+                    '</div>' +
+                    (ref.details ? '<div class="ref-details">' + escapeHtml(ref.details) + '</div>' : '');
+                
                 refItem.addEventListener('click', () => {
                     vscode.postMessage({
                         command: 'jumpTo',
@@ -421,32 +426,49 @@ export class ReferenceVisualizerPanel {
                 });
                 sidebar.appendChild(refItem);
 
-                // Add node
-                const nodeId = \`ref_\${index}\`;
-                
+                // Group for layout
+                const groupItem = { ref, index, relationColor };
+                const relation = ref.relationType;
+                if (relation === 'Define') {
+                    topGroup.push(groupItem);
+                } else if (relation === 'Read' || relation === 'Receive') {
+                    rightGroup.push(groupItem);
+                } else {
+                    leftGroup.push(groupItem);
+                }
+            });
+
+            function addVisualNodeAndEdge(item, x, y) {
+                const ref = item.ref;
+                const index = item.index;
+                const relationColor = item.relationColor;
+                const nodeId = 'ref_' + index;
+
                 // Rich Tooltip Content (HTML)
-                const tooltipHtml = \`
-                    <div style="padding: 8px; font-family: -apple-system, sans-serif; background: rgba(16,20,31,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                        <strong style="color: #60a5fa; font-size: 14px;">\${ref.sourceName}</strong>
-                        <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">\${ref.sourceType}</div>
-                        <div style="font-size: 12px; color: #cbd5e1; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1);">
-                            <b>File:</b> \${ref.filePath.split(/[\\\\/]/).pop()} : \${ref.line}<br>
-                            <b>Relation:</b> <span style="color: \${relationColor}; font-weight: bold;">\${ref.relationType}</span>
-                        </div>
-                        \${ref.details ? \`
-                        <div style="margin-top: 6px; background: rgba(0,0,0,0.5); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05);">
-                            <code style="color: #34d399; font-size: 11px;">\${escapeHtml(ref.details)}</code>
-                        </div>\` : ''}
-                    </div>
-                \`;
+                const fileBasename = ref.filePath.split(/[\\\\\\\\/]/).pop();
+                const tooltipHtml = 
+                    '<div style="padding: 8px; font-family: -apple-system, sans-serif; background: rgba(16,20,31,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">' +
+                        '<strong style="color: #60a5fa; font-size: 14px;">' + ref.sourceName + '</strong>' +
+                        '<div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">' + ref.sourceType + '</div>' +
+                        '<div style="font-size: 12px; color: #cbd5e1; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1);">' +
+                            '<b>File:</b> ' + fileBasename + ' : ' + ref.line + '<br>' +
+                            '<b>Relation:</b> <span style="color: ' + relationColor + '; font-weight: bold;">' + ref.relationType + '</span>' +
+                        '</div>' +
+                        (ref.details ? 
+                        '<div style="margin-top: 6px; background: rgba(0,0,0,0.5); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05);">' +
+                            '<code style="color: #34d399; font-size: 11px;">' + escapeHtml(ref.details) + '</code>' +
+                        '</div>' : '') +
+                    '</div>';
 
                 const tooltipElement = document.createElement('div');
                 tooltipElement.innerHTML = tooltipHtml;
 
                 nodes.push({
                     id: nodeId,
-                    label: \`\${ref.sourceName}\\n(\${ref.sourceType})\`,
+                    label: ref.sourceName + '\\n(' + ref.sourceType + ')',
                     title: tooltipElement, // Rich hover info via DOM element
+                    x: x,
+                    y: y,
                     color: {
                         background: '#131824',
                         border: relationColor,
@@ -463,9 +485,6 @@ export class ReferenceVisualizerPanel {
                     shadow: { enabled: true, color: 'rgba(0, 0, 0, 0.3)', size: 8, x: 0, y: 2 }
                 });
 
-                // Add edge
-                const arrowDirection = (ref.relationType === 'Read') ? 'to' : 'from';
-
                 edges.push({
                     from: ref.relationType === 'Read' ? 'target' : nodeId,
                     to: ref.relationType === 'Read' ? nodeId : 'target',
@@ -475,6 +494,34 @@ export class ReferenceVisualizerPanel {
                     arrows: { to: { enabled: true, scaleFactor: 0.8 } },
                     width: 1.5
                 });
+            }
+
+            // Layout constants
+            const leftX = -350;
+            const rightX = 350;
+            const topY = -220;
+            const yGap = 85;
+            const xGap = 200;
+
+            // Layout Left Group (Write/Create/Send/Init)
+            const L = leftGroup.length;
+            leftGroup.forEach((item, i) => {
+                const y = (i - (L - 1) / 2) * yGap;
+                addVisualNodeAndEdge(item, leftX, y);
+            });
+
+            // Layout Right Group (Read/Receive)
+            const R = rightGroup.length;
+            rightGroup.forEach((item, i) => {
+                const y = (i - (R - 1) / 2) * yGap;
+                addVisualNodeAndEdge(item, rightX, y);
+            });
+
+            // Layout Top Group (Define)
+            const T = topGroup.length;
+            topGroup.forEach((item, i) => {
+                const x = (i - (T - 1) / 2) * xGap;
+                addVisualNodeAndEdge(item, x, topY);
             });
 
             // Create vis-network
@@ -499,15 +546,7 @@ export class ReferenceVisualizerPanel {
                     }
                 },
                 physics: {
-                    barnesHut: {
-                        gravitationalConstant: -3000,
-                        centralGravity: 0.3,
-                        springLength: 120,
-                        springConstant: 0.04,
-                        damping: 0.09,
-                        avoidOverlap: 0.5
-                    },
-                    stabilization: { iterations: 150 }
+                    enabled: false
                 },
                 interaction: {
                     hover: true,
